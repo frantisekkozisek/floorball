@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { analyzeGesture, analyzeDrawnPath, checkGoalCollision, updateBallPhysics } from '../src/game/physics';
+import { analyzeGesture, analyzeDrawnPath, checkGoalCollision, updateBallPhysics, partitionStroke, calculateShotVelocity } from '../src/game/physics';
 import { TouchPoint, Ball, GoalDimensions } from '../src/game/types';
 
 describe('Florbalová fyzika & Detekce triků', () => {
@@ -203,6 +203,99 @@ describe('Florbalová fyzika & Detekce triků', () => {
       expect(ball.x).toBeGreaterThan(270);
       expect(ball.y).toBeLessThan(600);
       expect(ball.trail.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('partitionStroke()', () => {
+    it('vrátí výchozí hodnoty pro prázdné pole', () => {
+      const res = partitionStroke([], goal);
+      expect(res.runPath.length).toBe(1);
+      expect(res.shotTarget).toBeDefined();
+      expect(res.shotTarget.label).toContain('STŘELA');
+    });
+
+    it('rozdělí tah na trasu běhu (y >= 285) a cíl v levém vinklu', () => {
+      const points = [
+        { x: 270, y: 780 },
+        { x: 230, y: 550 },
+        { x: 200, y: 350 },
+        { x: 190, y: 290 },
+        { x: 180, y: 100 }, // cíl v levém vinklu (x vlevo, y vysoko v síti)
+      ];
+      const res = partitionStroke(points, goal);
+
+      // Trasa běhu se zastaví na shooting line Y >= 285
+      for (const p of res.runPath) {
+        expect(p.y).toBeGreaterThanOrEqual(284.9);
+      }
+      expect(res.releasePoint.y).toBe(285);
+
+      // Cíl v brance odpovídá levému vinklu
+      expect(res.shotTarget.x).toBeLessThan(goal.x - 35);
+      expect(res.shotTarget.z).toBeGreaterThan(80);
+      expect(res.shotTarget.label).toBe('LEVÝ VINKL! ⭐');
+    });
+
+    it('rozdělí tah s cílem v pravém vinklu', () => {
+      const points = [
+        { x: 270, y: 780 },
+        { x: 320, y: 500 },
+        { x: 350, y: 320 },
+        { x: 360, y: 100 }, // pravý horní roh
+      ];
+      const res = partitionStroke(points, goal);
+      expect(res.shotTarget.x).toBeGreaterThan(goal.x + 35);
+      expect(res.shotTarget.z).toBeGreaterThan(80);
+      expect(res.shotTarget.label).toBe('PRAVÝ VINKL! ⭐');
+    });
+
+    it('detekuje střelu po zemi k tyči', () => {
+      const points = [
+        { x: 270, y: 780 },
+        { x: 250, y: 400 },
+        { x: 180, y: 210 }, // levý dolní roh (při zemi)
+      ];
+      const res = partitionStroke(points, goal);
+      expect(res.shotTarget.x).toBeLessThan(goal.x - 35);
+      expect(res.shotTarget.z).toBeLessThanOrEqual(40);
+      expect(res.shotTarget.label).toContain('K LEVÉ TYČI');
+    });
+
+    it('promítne směr střely do branky, pokud tah skončí na palubovce', () => {
+      const points = [
+        { x: 270, y: 780 },
+        { x: 270, y: 600 },
+        { x: 270, y: 450 }, // končí před brankovištěm
+      ];
+      const res = partitionStroke(points, goal);
+      expect(res.runPath.length).toBe(3);
+      expect(res.releasePoint.y).toBe(450);
+      expect(res.shotTarget.x).toBeCloseTo(270, 1);
+      expect(res.shotTarget.z).toBeGreaterThan(0);
+    });
+  });
+
+  describe('calculateShotVelocity()', () => {
+    it('vypočítá balistické rychlosti tak, že míček přesně zasáhne cíl na brankové čáře', () => {
+      const start = { x: 250, y: 350 };
+      const target = { x: 320, y: 120, z: 100 }; // cíl s výškou z = 100
+      const vel = calculateShotVelocity(start, target, goal.y, 760);
+
+      expect(vel.flightTime).toBeGreaterThan(0.18);
+      expect(vel.vy).toBeLessThan(0); // míček letí dopředu k brance
+
+      // Simulace letu míčku:
+      // x(t) = start.x + vx * t
+      // y(t) = start.y + vy * t
+      // z(t) = start.z + vz * t - 0.5 * 340 * t^2
+      const t = vel.flightTime;
+      const finalX = start.x + vel.vx * t;
+      const finalY = start.y + vel.vy * t;
+      const finalZ = vel.vz * t - 0.5 * 340 * t * t;
+
+      expect(finalX).toBeCloseTo(target.x, 1);
+      expect(finalY).toBeCloseTo(goal.y, 1);
+      expect(finalZ).toBeCloseTo(target.z, 1);
     });
   });
 });

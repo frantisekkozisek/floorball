@@ -1,5 +1,5 @@
-import { Ball, GameScore, GameMode, GoalDimensions, TouchPoint, TrickType } from './types';
-import { analyzeGesture, analyzeDrawnPath, checkGoalCollision, updateBallPhysics } from './physics';
+import { Ball, GameScore, GameMode, GoalDimensions, TouchPoint, TrickType, ShotTarget } from './types';
+import { analyzeGesture, analyzeDrawnPath, checkGoalCollision, updateBallPhysics, partitionStroke, calculateShotVelocity } from './physics';
 import { GoalkeeperAI } from './goalkeeper';
 import { ParticleSystem } from './particles';
 import { TutorialManager } from './tutorial';
@@ -29,8 +29,11 @@ export class GameEngine {
     maxShots: 5,
   };
 
-  // Kreslení trasy a běh hráčky po hřišti
+  // Kreslení trasy a běh hráčky po hřišti (Varianta 1)
   public drawnPath: { x: number; y: number }[] = [];
+  public rawDrawnPoints: { x: number; y: number }[] = [];
+  public shotTarget: ShotTarget | null = null;
+  public releasePoint: { x: number; y: number } | null = null;
   private isDrawingPath: boolean = false;
   public isRunningPath: boolean = false;
   private pathSegmentIndex: number = 0;
@@ -101,7 +104,10 @@ export class GameEngine {
     this.playerX = 270;
     this.playerY = 780;
     this.playerFacingAngle = 0;
+    this.rawDrawnPoints = [];
     this.drawnPath = [];
+    this.shotTarget = null;
+    this.releasePoint = null;
     this.isDrawingPath = false;
     this.isRunningPath = false;
     this.pathSegmentIndex = 0;
@@ -165,10 +171,11 @@ export class GameEngine {
       if (!this.ball.isMoving && !this.isRunningPath) {
         this.isDrawingPath = true;
         // Trasa začíná u nohou Julinky a pokračuje k prstu
-        this.drawnPath = [
+        this.rawDrawnPoints = [
           { x: this.playerX, y: this.playerY },
           { x: pos.x, y: pos.y },
         ];
+        this.updatePartitionedStroke();
       }
     };
 
@@ -178,10 +185,11 @@ export class GameEngine {
       this.touchPoints.push({ x: pos.x, y: pos.y, time: now });
 
       if (this.isDrawingPath && !this.ball.isMoving && !this.isRunningPath) {
-        // Přidáme bod do trasy pokud se prst posunul aspoň o 8px
-        const last = this.drawnPath[this.drawnPath.length - 1];
-        if (Math.hypot(pos.x - last.x, pos.y - last.y) > 8) {
-          this.drawnPath.push({ x: pos.x, y: pos.y });
+        // Přidáme bod do trasy pokud se prst posunul aspoň o 6px
+        const last = this.rawDrawnPoints[this.rawDrawnPoints.length - 1];
+        if (Math.hypot(pos.x - last.x, pos.y - last.y) > 6) {
+          this.rawDrawnPoints.push({ x: pos.x, y: pos.y });
+          this.updatePartitionedStroke();
 
           // Tichý zvuk vedení míčku při kreslení
           if (now - this.lastDribbleSoundTime > 220) {
@@ -199,6 +207,8 @@ export class GameEngine {
 
       if (this.isDrawingPath && !this.ball.isMoving && !this.isRunningPath) {
         this.isDrawingPath = false;
+        this.rawDrawnPoints.push({ x: pos.x, y: pos.y });
+        this.updatePartitionedStroke();
 
         let totalLength = 0;
         for (let i = 1; i < this.drawnPath.length; i++) {
@@ -206,7 +216,7 @@ export class GameEngine {
         }
 
         // Pokud je nakreslená trasa delší než 25px, Julinka se po ní rozběhne!
-        if (totalLength > 25) {
+        if (totalLength > 25 && this.drawnPath.length >= 2) {
           this.isRunningPath = true;
           this.pathSegmentIndex = 0;
           this.pathSegmentProgress = 0;
@@ -297,6 +307,13 @@ export class GameEngine {
     this.canvas.height = this.V_HEIGHT;
   }
 
+  private updatePartitionedStroke() {
+    const partitioned = partitionStroke(this.rawDrawnPoints, this.goal);
+    this.drawnPath = partitioned.runPath;
+    this.shotTarget = partitioned.shotTarget;
+    this.releasePoint = partitioned.releasePoint;
+  }
+
   private attemptShot(releasePos?: { x: number; y: number }) {
     let shot = analyzeGesture(this.touchPoints);
 
@@ -371,38 +388,52 @@ export class GameEngine {
   }
 
   private triggerShotFromRun() {
-    const trickType = analyzeDrawnPath(this.drawnPath);
+    const trickType = analyzeDrawnPath(this.rawDrawnPoints.length > 0 ? this.rawDrawnPoints : this.drawnPath);
     soundManager.playStickHit();
     this.stickAngle = 0.7; // plný švih hokejkou
 
-    let targetGoalX = this.playerX;
-    if (trickType === 'toe-drag') {
-      targetGoalX = this.goal.x + (this.playerX > this.goal.x ? -65 : 65);
-    } else if (trickType === 'zorro') {
-      targetGoalX = this.goal.x + (this.playerX > this.goal.x ? -75 : 75);
+    let targetX = this.playerX;
+    let targetY = this.goal.y - 70;
+    let targetZ = 70;
+
+    if (this.shotTarget) {
+      targetX = this.shotTarget.x;
+      targetY = this.shotTarget.y;
+      targetZ = this.shotTarget.z;
     } else {
-      targetGoalX = Math.max(
-        this.goal.x - this.goal.width * 0.42,
-        Math.min(this.goal.x + this.goal.width * 0.42, this.playerX)
-      );
+      if (trickType === 'toe-drag') {
+        targetX = this.goal.x + (this.playerX > this.goal.x ? -65 : 65);
+        targetZ = 20;
+      } else if (trickType === 'zorro') {
+        targetX = this.goal.x + (this.playerX > this.goal.x ? -75 : 75);
+        targetZ = 115;
+      } else {
+        targetX = Math.max(
+          this.goal.x - this.goal.width * 0.42,
+          Math.min(this.goal.x + this.goal.width * 0.42, this.playerX)
+        );
+        targetZ = 65;
+      }
+      targetY = this.goal.y - targetZ;
     }
 
-    const dx = targetGoalX - this.ball.x;
-    const dy = this.goal.y - this.ball.y;
-    const dist = Math.hypot(dx, dy);
-    const speed = 740;
-    const lift = trickType === 'zorro' ? 0.92 : (trickType === 'toe-drag' ? 0.35 : 0.55);
+    const shotVel = calculateShotVelocity(
+      { x: this.ball.x, y: this.ball.y },
+      { x: targetX, y: targetY, z: targetZ },
+      this.goal.y,
+      760
+    );
 
-    this.ball.vx = (dx / dist) * speed;
-    this.ball.vy = (dy / dist) * speed;
-    this.ball.vz = lift * 270;
+    this.ball.vx = shotVel.vx;
+    this.ball.vy = shotVel.vy;
+    this.ball.vz = shotVel.vz;
     this.ball.isMoving = true;
 
     if (trickType === 'zorro') {
       soundManager.playWhoosh();
     }
 
-    this.goalieAI.onShotInitiated(trickType, targetGoalX);
+    this.goalieAI.onShotInitiated(trickType, targetX);
 
     if (this.mode === 'tutorial') {
       this.handleTutorialShot(trickType);
@@ -581,53 +612,131 @@ export class GameEngine {
   }
 
   /**
-   * Vykreslení trasy nakreslené prstem na podlaze
+   * Vykreslení trasy běhu a zaměřovacího terče v brance (Varianta 1)
    */
   private drawDrawnPath(ctx: CanvasRenderingContext2D) {
-    if (this.drawnPath.length < 2) return;
+    if (this.drawnPath.length < 2 && !this.shotTarget) return;
 
     ctx.save();
     const startIdx = this.isRunningPath ? Math.max(0, this.pathSegmentIndex) : 0;
-    if (startIdx >= this.drawnPath.length - 1) {
-      ctx.restore();
-      return;
+    const hasPointsToRun = startIdx < this.drawnPath.length - 1;
+
+    // 1. Široká svítící trasa běhu po palubovce
+    if (this.drawnPath.length >= 2 && (this.isDrawingPath || this.isRunningPath || hasPointsToRun)) {
+      ctx.beginPath();
+      ctx.moveTo(this.drawnPath[startIdx].x, this.drawnPath[startIdx].y);
+      for (let i = startIdx + 1; i < this.drawnPath.length; i++) {
+        ctx.lineTo(this.drawnPath[i].x, this.drawnPath[i].y);
+      }
+      ctx.strokeStyle = 'rgba(5, 217, 232, 0.4)';
+      ctx.lineWidth = 16;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.stroke();
+
+      // Vnitřní neonově žlutá linie s animovaným dash
+      ctx.strokeStyle = '#ffe600';
+      ctx.lineWidth = 5;
+      ctx.setLineDash([12, 8]);
+      ctx.lineDashOffset = -performance.now() * 0.05;
+      ctx.stroke();
+      ctx.setLineDash([]);
     }
 
-    // 1. Široká svítící záře trasy
-    ctx.beginPath();
-    ctx.moveTo(this.drawnPath[startIdx].x, this.drawnPath[startIdx].y);
-    for (let i = startIdx + 1; i < this.drawnPath.length; i++) {
-      ctx.lineTo(this.drawnPath[i].x, this.drawnPath[i].y);
+    // 2. Bod odpalu na konci běžecké trasy
+    const launchPos = this.releasePoint || (this.drawnPath.length > 0 ? this.drawnPath[this.drawnPath.length - 1] : { x: this.playerX, y: this.playerY });
+
+    if (this.isDrawingPath || this.isRunningPath) {
+      ctx.fillStyle = '#ff007f';
+      ctx.beginPath();
+      ctx.arc(launchPos.x, launchPos.y, 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
     }
-    ctx.strokeStyle = 'rgba(5, 217, 232, 0.45)';
-    ctx.lineWidth = 16;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.stroke();
 
-    // 2. Vnitřní neonová linie s animovaným dash
-    ctx.strokeStyle = '#ffe600';
-    ctx.lineWidth = 5;
-    ctx.setLineDash([12, 8]);
-    ctx.lineDashOffset = -performance.now() * 0.05;
-    ctx.stroke();
-    ctx.setLineDash([]);
+    // 3. Zaměřovací paprsek a cílový terč v brance
+    if (this.shotTarget && (this.isDrawingPath || this.isRunningPath || this.ball.isMoving)) {
+      const target = this.shotTarget;
 
-    // 3. Cílový terč na konci trasy
-    const endPt = this.drawnPath[this.drawnPath.length - 1];
-    ctx.fillStyle = '#ff2a6d';
-    ctx.beginPath();
-    ctx.arc(endPt.x, endPt.y, 11, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2.5;
-    ctx.stroke();
+      // Paprsek od hráčky do branky
+      ctx.beginPath();
+      ctx.moveTo(launchPos.x, launchPos.y);
+      ctx.lineTo(target.x, target.y);
+      ctx.strokeStyle = 'rgba(255, 42, 109, 0.35)';
+      ctx.lineWidth = 5;
+      ctx.stroke();
 
-    if (!this.isRunningPath) {
-      ctx.fillStyle = '#ffe600';
+      ctx.beginPath();
+      ctx.moveTo(launchPos.x, launchPos.y);
+      ctx.lineTo(target.x, target.y);
+      ctx.strokeStyle = target.badgeColor || '#05d9e8';
+      ctx.lineWidth = 2.5;
+      ctx.setLineDash([8, 6]);
+      ctx.lineDashOffset = -performance.now() * 0.06;
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // 4. Interaktivní terč 🎯 v brance
+      const pulse = Math.sin(performance.now() * 0.008) * 3;
+      const rOuter = 20 + pulse;
+      const rInner = 8;
+
+      // Vnější pulzující kruh s neonovou září
+      ctx.beginPath();
+      ctx.arc(target.x, target.y, rOuter, 0, Math.PI * 2);
+      ctx.strokeStyle = target.badgeColor || '#ffe600';
+      ctx.lineWidth = 3;
+      ctx.shadowColor = target.badgeColor || '#ffe600';
+      ctx.shadowBlur = 12;
+      ctx.stroke();
+
+      // Vnitřní terč
+      ctx.beginPath();
+      ctx.arc(target.x, target.y, rInner, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255, 42, 109, 0.85)';
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Kříž terče (crosshair)
+      ctx.beginPath();
+      ctx.moveTo(target.x - rOuter - 5, target.y);
+      ctx.lineTo(target.x + rOuter + 5, target.y);
+      ctx.moveTo(target.x, target.y - rOuter - 5);
+      ctx.lineTo(target.x, target.y + rOuter + 5);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.8;
+      ctx.stroke();
+
+      ctx.shadowBlur = 0;
+
+      // Středový bod (bullseye)
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(target.x, target.y, 3, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 5. Štítek s názvem cíle (např. LEVÝ VINKL! ⭐)
+      const badgeText = target.label;
       ctx.font = 'bold 13px sans-serif';
+      const textWidth = ctx.measureText(badgeText).width;
+      const badgeY = target.y > 140 ? target.y - 32 : target.y + 32;
+
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+      ctx.beginPath();
+      ctx.roundRect(target.x - textWidth / 2 - 10, badgeY - 14, textWidth + 20, 26, 13);
+      ctx.fill();
+      ctx.strokeStyle = target.badgeColor || '#ffe600';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.fillStyle = target.badgeColor || '#ffe600';
       ctx.textAlign = 'center';
-      ctx.fillText('🎯 STŘELA', endPt.x, endPt.y - 16);
+      ctx.textBaseline = 'middle';
+      ctx.fillText(badgeText, target.x, badgeY);
     }
 
     ctx.restore();
@@ -918,7 +1027,7 @@ export class GameEngine {
     // Perspektivní škálování: čím je míček blíže brance, tím je menší
     const scale = 0.45 + 0.55 * Math.max(0, (b.y - 200) / (740 - 200));
     const r = b.radius * scale;
-    const renderY = b.y - b.z * scale;
+    const renderY = b.y - b.z;
 
     // Stín míčku na podlaze
     ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';

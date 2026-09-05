@@ -5,7 +5,20 @@ Hra nabízí 2.5D arkádový styl z pohledu zezadu, interaktivní **Florbalovou 
 
 ---
 
-## 🎮 Herní módy & Triky
+## 🎮 Herní mechanika & Ovládání
+
+### Kreslení trasy běhu & Cílení do branky (Varianta 1)
+Jediným plynulým tahem prstu po displeji určíte celou akci:
+1. **Trasa běhu po hřišti:** Na palubovce se vykresluje svítící neonová trasa s animovanými šipkami, kudy Julinka poběží s míčkem.
+2. **Zamíření do branky:** Tah prstu vyvedený do brankového rámu okamžitě aktivuje zaměřovací laser a interaktivní terč 🎯:
+   - **Levý / pravý vinkl (⭐):** Zakončení do horních rohů sítě.
+   - **Pod břevno (🚀):** Vysoká pumelice pod horní tyč.
+   - **K tyči po zemi (⚡):** Rychlá přízemní střela do protipohybu.
+3. **Akce po zvednutí prstu:** Julinka bleskově vyrazí po nakreslené trase, vede míček na hokejce, před brankovištěm napřáhne a odpálí míček přesně do vybraného cíle v brance!
+
+---
+
+## 🏆 Herní módy & Triky
 
 ### 1. Florbalová akademie (Intro tutoriál)
 Julinka se krok za krokem s pomocí animovaného prstíku naučí provádět:

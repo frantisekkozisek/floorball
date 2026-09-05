@@ -1,4 +1,4 @@
-import { TouchPoint, TrickType, ShotParams, Ball, GoalDimensions } from './types';
+import { TouchPoint, TrickType, ShotParams, Ball, GoalDimensions, PartitionedStroke, ShotTarget } from './types';
 
 /**
  * Analyzuje dotyková gesta a rozpoznává florbalové triky:
@@ -142,6 +142,208 @@ export function analyzeDrawnPath(path: { x: number; y: number }[]): TrickType {
   if (hasSharpCut) return 'toe-drag';
   if (maxDeviation > 40 && pathLen / directDist > 1.12) return 'zorro';
   return 'normal';
+}
+
+/**
+ * Rozdělí nakreslené body tahu na:
+ * 1. `runPath`: trasu běhu Julinky po palubovce (zastaví se před brankovištěm na Y >= 285).
+ * 2. `shotTarget`: přesný cíl v brance (x, y v brankovém rámu, výška z a atraktivní popisek).
+ * 3. `releasePoint`: bod, odkud Julinka po doběhu vystřelí.
+ */
+export function partitionStroke(
+  points: { x: number; y: number }[],
+  goal: GoalDimensions
+): PartitionedStroke {
+  const MIN_RUN_Y = 285; // Přední hranice brankoviště – kam Julinka doběhne
+
+  if (!points || points.length === 0) {
+    const defaultTarget: ShotTarget = {
+      x: goal.x,
+      y: goal.y - 70,
+      z: 70,
+      label: 'PŘÍMÁ STŘELA! 🎯',
+      badgeColor: '#00ffcc',
+    };
+    return {
+      runPath: [{ x: goal.x, y: 780 }],
+      shotTarget: defaultTarget,
+      releasePoint: { x: goal.x, y: 780 },
+    };
+  }
+
+  if (points.length === 1) {
+    const p = points[0];
+    const defaultTarget: ShotTarget = {
+      x: goal.x,
+      y: goal.y - 70,
+      z: 70,
+      label: 'PŘÍMÁ STŘELA! 🎯',
+      badgeColor: '#00ffcc',
+    };
+    return {
+      runPath: [p],
+      shotTarget: defaultTarget,
+      releasePoint: p,
+    };
+  }
+
+  // Hledáme bod přechodu, kde tah opouští palubovku a začíná mířit do branky (y < MIN_RUN_Y)
+  let transitionIdx = -1;
+  for (let i = 0; i < points.length; i++) {
+    if (points[i].y < MIN_RUN_Y) {
+      transitionIdx = i;
+      break;
+    }
+  }
+
+  let runPath: { x: number; y: number }[] = [];
+  let releasePoint: { x: number; y: number };
+  let targetX = goal.x;
+  let targetY = goal.y - 70;
+  let targetZ = 70;
+
+  if (transitionIdx > 0) {
+    // Část bodů je na hřišti a konec tahu míří do branky
+    runPath = points.slice(0, transitionIdx);
+    const pBefore = points[transitionIdx - 1];
+    const pAfter = points[transitionIdx];
+
+    // Interpolace bodu přesně na hranici MIN_RUN_Y pro plynulý doběh
+    const ratio = (MIN_RUN_Y - pBefore.y) / (pAfter.y - pBefore.y);
+    const clampedRatio = Math.max(0, Math.min(1, ratio));
+    const boundaryX = pBefore.x + (pAfter.x - pBefore.x) * clampedRatio;
+    releasePoint = { x: boundaryX, y: MIN_RUN_Y };
+    runPath.push(releasePoint);
+
+    // Cíl střely je určen posledním bodem tahu v brance
+    const lastPoint = points[points.length - 1];
+    const minGoalX = goal.x - goal.width * 0.46;
+    const maxGoalX = goal.x + goal.width * 0.46;
+    targetX = Math.max(minGoalX, Math.min(maxGoalX, lastPoint.x));
+
+    const minGoalY = goal.y - goal.height + 8;
+    const maxGoalY = goal.y - 6;
+    targetY = Math.max(minGoalY, Math.min(maxGoalY, lastPoint.y));
+    targetZ = goal.y - targetY;
+  } else if (transitionIdx === 0) {
+    // Tah začal rovnou v zóně branky
+    releasePoint = { x: points[0].x, y: MIN_RUN_Y };
+    runPath = [{ x: points[0].x, y: MIN_RUN_Y }];
+    const lastPoint = points[points.length - 1];
+    const minGoalX = goal.x - goal.width * 0.46;
+    const maxGoalX = goal.x + goal.width * 0.46;
+    targetX = Math.max(minGoalX, Math.min(maxGoalX, lastPoint.x));
+
+    const minGoalY = goal.y - goal.height + 8;
+    const maxGoalY = goal.y - 6;
+    targetY = Math.max(minGoalY, Math.min(maxGoalY, lastPoint.y));
+    targetZ = goal.y - targetY;
+  } else {
+    // Všechny body jsou na palubovce (y >= MIN_RUN_Y)
+    runPath = [...points];
+    releasePoint = points[points.length - 1];
+
+    // Určíme cíl projekcí směru z posledních bodů běhu
+    const pLast = points[points.length - 1];
+    const pPrev = points[Math.max(0, points.length - 3)];
+    const dx = pLast.x - pPrev.x;
+    const dy = pLast.y - pPrev.y;
+
+    if (dy < -2) {
+      // Směr nahoru k brance -> projekce na brankovou čáru
+      const t = (goal.y - pLast.y) / dy;
+      const projX = pLast.x + dx * t;
+      targetX = Math.max(goal.x - goal.width * 0.44, Math.min(goal.x + goal.width * 0.44, projX));
+    } else {
+      targetX = Math.max(goal.x - goal.width * 0.44, Math.min(goal.x + goal.width * 0.44, pLast.x));
+    }
+
+    const trick = analyzeDrawnPath(points);
+    if (trick === 'zorro') {
+      targetZ = 115; // Zvednutý míček pod břevno
+    } else if (trick === 'toe-drag') {
+      targetZ = 20; // Střela po zemi
+    } else {
+      targetZ = 65; // Střední výška
+    }
+    targetY = goal.y - targetZ;
+  }
+
+  // Vyhodnocení florbalového popisku pro cíl střely
+  const leftBound = goal.x - 35;
+  const rightBound = goal.x + 35;
+  const isLeft = targetX < leftBound;
+  const isRight = targetX > rightBound;
+  const isHigh = targetZ >= 80;
+  const isLow = targetZ <= 40;
+
+  let label = 'PŘÍMÁ STŘELA! 🎯';
+  let badgeColor = '#00ffcc';
+
+  if (isLeft && isHigh) {
+    label = 'LEVÝ VINKL! ⭐';
+    badgeColor = '#ffe600';
+  } else if (isRight && isHigh) {
+    label = 'PRAVÝ VINKL! ⭐';
+    badgeColor = '#ffe600';
+  } else if (isHigh) {
+    label = 'POD BŘEVNO! 🚀';
+    badgeColor = '#00ffcc';
+  } else if (isLeft && isLow) {
+    label = 'K LEVÉ TYČI! ⚡';
+    badgeColor = '#ff2a6d';
+  } else if (isRight && isLow) {
+    label = 'K PRAVÉ TYČI! ⚡';
+    badgeColor = '#ff2a6d';
+  } else if (isLeft) {
+    label = 'K LEVÉ TYČI! ⚡';
+    badgeColor = '#05d9e8';
+  } else if (isRight) {
+    label = 'K PRAVÉ TYČI! ⚡';
+    badgeColor = '#05d9e8';
+  } else if (isLow) {
+    label = 'PO ZEMI! 🎯';
+    badgeColor = '#00ffcc';
+  }
+
+  return {
+    runPath,
+    shotTarget: {
+      x: targetX,
+      y: targetY,
+      z: targetZ,
+      label,
+      badgeColor,
+    },
+    releasePoint,
+  };
+}
+
+/**
+ * Vypočítá počáteční 2.5D rychlost míčku (vx, vy, vz), aby přesně zasáhl vybraný cíl v brance.
+ */
+export function calculateShotVelocity(
+  startPos: { x: number; y: number },
+  target: { x: number; y: number; z: number },
+  goalY: number,
+  baseSpeed: number = 760
+): { vx: number; vy: number; vz: number; flightTime: number } {
+  const dy = goalY - startPos.y; // dy < 0 (letí dopředu na branku)
+  const dx = target.x - startPos.x;
+  const dist = Math.max(Math.hypot(dx, dy), 1);
+
+  // Doba letu na brankovou čáru
+  const flightTime = Math.max(0.18, dist / baseSpeed);
+
+  const vx = dx / flightTime;
+  const vy = dy / flightTime;
+
+  // Gravitace v našem fyzikálním modelu: ball.vz -= 340 * dt
+  // Z(t) = vz * t - 0.5 * g * t^2  =>  vz = (target.z + 0.5 * 340 * t^2) / t
+  const g = 340;
+  const vz = (target.z + 0.5 * g * flightTime * flightTime) / flightTime;
+
+  return { vx, vy, vz, flightTime };
 }
 
 

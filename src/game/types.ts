@@ -6,6 +6,20 @@ export interface TouchPoint {
   time: number;
 }
 
+export interface ShotTarget {
+  x: number;
+  y: number;
+  z: number;
+  label: string;
+  badgeColor: string;
+}
+
+export interface PartitionedStroke {
+  runPath: { x: number; y: number }[];
+  shotTarget: ShotTarget;
+  releasePoint: { x: number; y: number };
+}
+
 export interface ShotParams {
   type: TrickType;
   startX: number;
