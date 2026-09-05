@@ -40,6 +40,7 @@ canvas.addEventListener('click', (e) => {
 
 // Herní smyčka (60 FPS)
 let lastTime = performance.now();
+let lastSyncedMode = '';
 
 function gameLoop(currentTime: number) {
   const dt = Math.min((currentTime - lastTime) / 1000, 0.1);
@@ -48,7 +49,22 @@ function gameLoop(currentTime: number) {
   game.update(dt);
   game.render();
 
+  if (game.mode !== lastSyncedMode) {
+    lastSyncedMode = game.mode;
+    if (game.mode === 'tutorial') {
+      switchModeBtn.innerText = '🏆 Jít na nájezdy';
+      tipBanner.innerText = '💡 Tažením prstu veď míček a kličkuj, uvolněním vystřel!';
+    } else if (game.mode === 'shootout') {
+      switchModeBtn.innerText = '🎓 Trénink triků';
+      tipBanner.innerText = '⚡ Tažením prstu kličkuj před brankářem, uvolněním vystřel!';
+    } else if (game.mode === 'gameover') {
+      switchModeBtn.innerText = '🔄 Nová hra';
+      tipBanner.innerText = '🎉 Zápas skončil! Klepni pro další nájezdy!';
+    }
+  }
+
   requestAnimationFrame(gameLoop);
 }
 
 requestAnimationFrame(gameLoop);
+

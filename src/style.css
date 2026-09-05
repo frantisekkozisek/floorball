@@ -40,6 +40,10 @@ canvas {
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
   border-radius: 12px;
   background-color: #0f172a;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  user-select: none;
+  cursor: pointer;
 }
 
 .top-bar {

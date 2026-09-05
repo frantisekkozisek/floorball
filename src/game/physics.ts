@@ -9,42 +9,49 @@ import { TouchPoint, TrickType, ShotParams, Ball, GoalDimensions } from './types
 export function analyzeGesture(points: TouchPoint[]): ShotParams | null {
   if (!points || points.length < 2) return null;
 
-  const start = points[0];
-  const end = points[points.length - 1];
+  const lastPoint = points[points.length - 1];
+
+  // Použijeme body z posledních 280 ms pro zjištění směru a rychlosti odpalu
+  const recentThreshold = lastPoint.time - 280;
+  const recentPoints = points.filter((p) => p.time >= recentThreshold);
+  const activePoints = recentPoints.length >= 2 ? recentPoints : points;
+
+  const start = activePoints[0];
+  const end = activePoints[activePoints.length - 1];
   const durationMs = Math.max(end.time - start.time, 16);
 
   const dx = end.x - start.x;
   const dy = end.y - start.y;
 
   // Střela musí směřovat nahoru směrem k brance (dy záporné)
-  if (dy > -25) {
-    return null; // Nedostatečný pohyb dopředu
+  if (dy > -15) {
+    return null; // Pohyb dozadu nebo na místě
   }
 
   const directDistance = Math.hypot(dx, dy);
-  if (directDistance < 35) {
-    return null; // Příliš krátké gesto
+  if (directDistance < 20) {
+    return null; // Příliš neznatelný pohyb
   }
 
-  // Výpočet celkové délky projeté trasy
+  // Výpočet celkové délky a odchylky přes všechny body gesta
   let pathLength = 0;
   let maxSideDeviation = 0;
   let hasLateralHook = false;
+  const totalDx = lastPoint.x - points[0].x;
+  const totalDy = lastPoint.y - points[0].y;
+  const totalDist = Math.max(Math.hypot(totalDx, totalDy), 1);
 
   for (let i = 1; i < points.length; i++) {
     const pPrev = points[i - 1];
     const pCurr = points[i];
     pathLength += Math.hypot(pCurr.x - pPrev.x, pCurr.y - pPrev.y);
 
-    // Odchylka od přímé spojnice start -> end
-    // Vzorec pro vzdálenost bodu od přímky
-    const numerator = Math.abs(dy * pCurr.x - dx * pCurr.y + end.x * start.y - end.y * start.x);
-    const deviation = numerator / directDistance;
+    const numerator = Math.abs(totalDy * pCurr.x - totalDx * pCurr.y + lastPoint.x * points[0].y - lastPoint.y * points[0].x);
+    const deviation = numerator / totalDist;
     if (deviation > maxSideDeviation) {
       maxSideDeviation = deviation;
     }
 
-    // Detekce stahovačky: v první polovině gesta výrazný pohyb v X při minimálním nebo zpětném posunu v Y
     if (i < points.length * 0.6) {
       const stepDy = pCurr.y - pPrev.y;
       const stepDx = Math.abs(pCurr.x - pPrev.x);
@@ -64,12 +71,12 @@ export function analyzeGesture(points: TouchPoint[]): ShotParams | null {
     type = 'toe-drag';
     curve = (dx > 0 ? -1 : 1) * 0.5; // Finta do protipohybu
     lift = 0.35; // Rychlá střela po zemi / k tyči
-  } else if ((maxSideDeviation > 38 && pathLength / directDistance > 1.1) || maxSideDeviation > 50) {
+  } else if ((maxSideDeviation > 38 && pathLength / totalDist > 1.1) || maxSideDeviation > 50) {
     // Plynulý velký oblouk = zorro trik
     type = 'zorro';
     curve = (dx > 0 ? 1 : -1) * 0.8;
     lift = 0.95; // Zorro zvedá míček pod břevno
-  } else if (maxSideDeviation > 25 && pathLength / directDistance > 1.12) {
+  } else if (maxSideDeviation > 25 && pathLength / totalDist > 1.12) {
     type = 'toe-drag';
     curve = (dx > 0 ? -1 : 1) * 0.5;
     lift = 0.35;
@@ -94,6 +101,7 @@ export function analyzeGesture(points: TouchPoint[]): ShotParams | null {
     lift,
   };
 }
+
 
 /**
  * Zkontroluje, zda míček překročil brankovou čáru a zda je to gól, tyčka nebo mimo.

@@ -87,11 +87,14 @@ export class GameEngine {
   }
 
   private resetBall() {
+    this.playerX = 270;
+    this.playerY = 780;
     this.ball = this.createInitialBall();
     this.stickAngle = -0.35;
     this.stickTargetAngle = -0.35;
     this.goalieAI.reset();
   }
+
 
   public startShootout() {
     this.mode = 'shootout';
@@ -114,14 +117,16 @@ export class GameEngine {
     this.resetBall();
   }
 
+  private lastDribbleSoundTime: number = 0;
+
   private setupListeners() {
-    const getPos = (e: MouseEvent | Touch): { x: number; y: number } => {
+    const getPos = (clientX: number, clientY: number): { x: number; y: number } => {
       const rect = this.canvas.getBoundingClientRect();
-      const scaleX = this.V_WIDTH / rect.width;
-      const scaleY = this.V_HEIGHT / rect.height;
+      const scaleX = this.V_WIDTH / (rect.width || 1);
+      const scaleY = this.V_HEIGHT / (rect.height || 1);
       return {
-        x: (e.clientX - rect.left) * scaleX,
-        y: (e.clientY - rect.top) * scaleY,
+        x: Math.max(0, Math.min(this.V_WIDTH, (clientX - rect.left) * scaleX)),
+        y: Math.max(0, Math.min(this.V_HEIGHT, (clientY - rect.top) * scaleY)),
       };
     };
 
@@ -129,57 +134,119 @@ export class GameEngine {
       soundManager.ensureAudio();
       this.isPointerDown = true;
       this.touchPoints = [{ x: pos.x, y: pos.y, time: performance.now() }];
+
+      // Zkontrolujeme, zda uživatel nekliknul na tlačítko "Přeskočit trénink"
+      if (this.mode === 'tutorial') {
+        if (pos.x >= this.V_WIDTH / 2 - 140 && pos.x <= this.V_WIDTH / 2 + 140 && pos.y >= 850 && pos.y <= 910) {
+          this.startShootout();
+          this.isPointerDown = false;
+          return;
+        }
+      }
+
+      // Pokud míček stojí, okamžitě reagujeme a hráč i míček se přizpůsobí
+      if (!this.ball.isMoving) {
+        this.playerX = Math.max(90, Math.min(this.V_WIDTH - 90, pos.x));
+        this.playerY = Math.max(520, Math.min(840, pos.y + 40));
+        this.ball.x = this.playerX + 16;
+        this.ball.y = this.playerY - 35;
+      }
     };
 
     const onMove = (pos: { x: number; y: number }) => {
       if (!this.isPointerDown) return;
-      this.touchPoints.push({ x: pos.x, y: pos.y, time: performance.now() });
-      if (this.touchPoints.length > 25) {
-        this.touchPoints.shift();
-      }
+      const now = performance.now();
+      this.touchPoints.push({ x: pos.x, y: pos.y, time: now });
 
-      // Hokejka jemně reaguje na pohyb prstu
-      const dx = pos.x - (this.V_WIDTH / 2);
-      this.stickTargetAngle = -0.35 + (dx / 300);
+      if (!this.ball.isMoving) {
+        // Hráčka a míček aktivně sledují prst na displeji
+        this.playerX = Math.max(90, Math.min(this.V_WIDTH - 90, pos.x));
+        this.playerY = Math.max(520, Math.min(840, pos.y + 40));
+        this.ball.x = this.playerX + 16;
+        this.ball.y = this.playerY - 35;
+
+        // Kmitání hokejky a zvuk driblingu
+        this.stickAngle = -0.35 + Math.sin(now * 0.018) * 0.22;
+        if (now - this.lastDribbleSoundTime > 260) {
+          soundManager.playStickHit();
+          this.lastDribbleSoundTime = now;
+        }
+      }
     };
 
-    const onEnd = () => {
+    const onEnd = (pos: { x: number; y: number }) => {
       if (!this.isPointerDown) return;
       this.isPointerDown = false;
+      this.touchPoints.push({ x: pos.x, y: pos.y, time: performance.now() });
 
-      if (!this.ball.isMoving && this.touchPoints.length >= 2) {
-        this.attemptShot();
+      if (!this.ball.isMoving && this.touchPoints.length >= 1) {
+        this.attemptShot(pos);
       }
       this.touchPoints = [];
     };
 
-    // Touch události pro mobilní telefony
+    // Moderní Pointer Events pro mobil i desktop (s pointer capture)
+    this.canvas.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      try {
+        this.canvas.setPointerCapture(e.pointerId);
+      } catch {
+        // ignorovat pokud není podporováno
+      }
+      onStart(getPos(e.clientX, e.clientY));
+    });
+
+    this.canvas.addEventListener('pointermove', (e) => {
+      e.preventDefault();
+      onMove(getPos(e.clientX, e.clientY));
+    });
+
+    const handlePointerUp = (e: PointerEvent) => {
+      e.preventDefault();
+      try {
+        this.canvas.releasePointerCapture(e.pointerId);
+      } catch {
+        // ignorovat
+      }
+      onEnd(getPos(e.clientX, e.clientY));
+    };
+
+    this.canvas.addEventListener('pointerup', handlePointerUp);
+    this.canvas.addEventListener('pointercancel', handlePointerUp);
+
+    // Fallback dotykové události
     this.canvas.addEventListener('touchstart', (e) => {
       e.preventDefault();
-      if (e.touches.length > 0) onStart(getPos(e.touches[0]));
+      if (e.touches.length > 0) {
+        onStart(getPos(e.touches[0].clientX, e.touches[0].clientY));
+      }
     }, { passive: false });
 
     this.canvas.addEventListener('touchmove', (e) => {
       e.preventDefault();
-      if (e.touches.length > 0) onMove(getPos(e.touches[0]));
+      if (e.touches.length > 0) {
+        onMove(getPos(e.touches[0].clientX, e.touches[0].clientY));
+      }
     }, { passive: false });
 
     this.canvas.addEventListener('touchend', (e) => {
       e.preventDefault();
-      onEnd();
+      if (e.changedTouches.length > 0) {
+        onEnd(getPos(e.changedTouches[0].clientX, e.changedTouches[0].clientY));
+      } else {
+        onEnd({ x: this.ball.x, y: this.ball.y });
+      }
     }, { passive: false });
 
-    // Myš pro testování na PC
-    this.canvas.addEventListener('mousedown', (e) => onStart(getPos(e)));
-    this.canvas.addEventListener('mousemove', (e) => onMove(getPos(e)));
-    window.addEventListener('mouseup', () => onEnd());
     window.addEventListener('resize', () => this.resize());
+    window.addEventListener('orientationchange', () => {
+      setTimeout(() => this.resize(), 100);
+    });
   }
 
   public resize() {
-    const parent = this.canvas.parentElement || document.body;
-    const w = parent.clientWidth;
-    const h = parent.clientHeight;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
     const aspect = this.V_WIDTH / this.V_HEIGHT;
 
     let targetW = w;
@@ -190,18 +257,37 @@ export class GameEngine {
       targetW = h * aspect;
     }
 
-    this.canvas.style.width = `${targetW}px`;
-    this.canvas.style.height = `${targetH}px`;
+    this.canvas.style.width = `${Math.floor(targetW)}px`;
+    this.canvas.style.height = `${Math.floor(targetH)}px`;
     this.canvas.width = this.V_WIDTH;
     this.canvas.height = this.V_HEIGHT;
   }
 
-  private attemptShot() {
-    const shot = analyzeGesture(this.touchPoints);
-    if (!shot) return;
+  private attemptShot(releasePos?: { x: number; y: number }) {
+    let shot = analyzeGesture(this.touchPoints);
+
+    // Pokud uživatel táhl a uvolnil prst bez prudkého švihu, vytvoříme přímou střelu na branku
+    if (!shot) {
+      const aimX = releasePos ? releasePos.x : this.ball.x;
+      const targetGoalX = Math.max(
+        this.goal.x - this.goal.width * 0.44,
+        Math.min(this.goal.x + this.goal.width * 0.44, aimX)
+      );
+
+      shot = {
+        type: 'normal',
+        startX: this.ball.x,
+        startY: this.ball.y,
+        targetX: targetGoalX,
+        targetY: this.goal.y,
+        speed: 680,
+        curve: 0,
+        lift: 0.5,
+      };
+    }
 
     soundManager.playStickHit();
-    this.stickAngle = 0.5; // prudký švih hokejkou
+    this.stickAngle = 0.6; // prudký švih hokejkou
 
     const dx = shot.targetX - this.ball.x;
     const dy = shot.targetY - this.ball.y;
@@ -349,6 +435,10 @@ export class GameEngine {
     this.particles.draw(ctx);
     this.drawSwipeTrail(ctx);
 
+    if (this.isPointerDown && !this.ball.isMoving) {
+      this.drawAimingGuide(ctx);
+    }
+
     if (this.mode === 'tutorial') {
       this.tutorial.drawGuide(ctx);
     }
@@ -359,6 +449,66 @@ export class GameEngine {
     if (this.mode === 'gameover') {
       this.drawGameOverOverlay(ctx);
     }
+  }
+
+  /**
+   * Vykreslení míření a okamžité vizuální odezvy na pohyb prstu
+   */
+  private drawAimingGuide(ctx: CanvasRenderingContext2D) {
+    ctx.save();
+
+    // 1. Zářící kruh a zpráva pod prstem
+    const touchX = this.touchPoints.length > 0 ? this.touchPoints[this.touchPoints.length - 1].x : this.ball.x;
+    const touchY = this.touchPoints.length > 0 ? this.touchPoints[this.touchPoints.length - 1].y : this.ball.y;
+
+    ctx.strokeStyle = '#05d9e8';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(touchX, touchY, 26, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(5, 217, 232, 0.2)';
+    ctx.fill();
+
+    // 2. Trajektorie míření od míčku k brance
+    const targetGoalX = Math.max(
+      this.goal.x - this.goal.width * 0.44,
+      Math.min(this.goal.x + this.goal.width * 0.44, this.ball.x)
+    );
+
+    ctx.strokeStyle = 'rgba(255, 230, 0, 0.85)';
+    ctx.lineWidth = 4;
+    ctx.setLineDash([8, 8]);
+    ctx.beginPath();
+    ctx.moveTo(this.ball.x, this.ball.y);
+    ctx.lineTo(targetGoalX, this.goal.y + 10);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // 3. Cílový terč v brance
+    ctx.fillStyle = '#ff2a6d';
+    ctx.beginPath();
+    ctx.arc(targetGoalX, this.goal.y + 10, 10, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // 4. Instrukce pro odpal
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+    ctx.beginPath();
+    ctx.roundRect(this.V_WIDTH / 2 - 120, this.V_HEIGHT - 90, 240, 36, 18);
+    ctx.fill();
+    ctx.strokeStyle = '#00ffcc';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    ctx.fillStyle = '#00ffcc';
+    ctx.font = 'bold 14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('👆 PUST PRO STŘELU / ŠVIHNI!', this.V_WIDTH / 2, this.V_HEIGHT - 67);
+
+    ctx.restore();
   }
 
   /**
@@ -737,6 +887,20 @@ export class GameEngine {
         ctx.font = '14px sans-serif';
         ctx.fillText(step.instruction, this.V_WIDTH / 2, 74);
       }
+
+      // Tlačítko pro okamžité přeskočení tréninku na hrací ploše
+      ctx.fillStyle = 'rgba(255, 42, 109, 0.9)';
+      ctx.beginPath();
+      ctx.roundRect(this.V_WIDTH / 2 - 130, 855, 260, 46, 23);
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 15px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('🏆 JÍT NA NÁJEZDY ⏩', this.V_WIDTH / 2, 884);
     }
   }
 
@@ -816,7 +980,12 @@ export class GameEngine {
   }
 
   public handleClickAt(x: number, y: number) {
-    if (this.mode === 'gameover') {
+    if (this.mode === 'tutorial') {
+      // Kliknutí na tlačítko Jít na nájezdy v tutoriálu
+      if (x >= this.V_WIDTH / 2 - 130 && x <= this.V_WIDTH / 2 + 130 && y >= 855 && y <= 901) {
+        this.startShootout();
+      }
+    } else if (this.mode === 'gameover') {
       // Kliknutí na tlačítko Hrát znovu
       if (x >= this.V_WIDTH / 2 - 130 && x <= this.V_WIDTH / 2 + 130 && y >= 560 && y <= 624) {
         this.startShootout();
