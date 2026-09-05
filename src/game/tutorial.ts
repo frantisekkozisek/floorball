@@ -102,39 +102,26 @@ export class TutorialManager {
     ctx.save();
     const pts = step.guidePoints;
 
-    // Vykreslení svítící vodicí dráhy
+    // Jemná průhledná přerušovaná vodicí čára
     ctx.beginPath();
     ctx.moveTo(pts[0].x, pts[0].y);
     for (let i = 1; i < pts.length; i++) {
       ctx.lineTo(pts[i].x, pts[i].y);
     }
-    ctx.strokeStyle = 'rgba(5, 217, 232, 0.45)';
-    ctx.lineWidth = 14;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+    ctx.lineWidth = 3;
+    ctx.setLineDash([8, 6]);
     ctx.stroke();
+    ctx.setLineDash([]);
 
-    ctx.strokeStyle = '#05d9e8';
-    ctx.lineWidth = 4;
-    ctx.stroke();
-
-    // Animovaný prstík / ukazovátko pohybující se po křivce
+    // Animovaný symbol prstu ukazující směr
     const progress = (this.animTimer % 1.8) / 1.8; // 0..1
     const handPos = this.getPointAlongPath(pts, progress);
 
-    ctx.fillStyle = '#ff2a6d';
-    ctx.shadowColor = '#ff2a6d';
-    ctx.shadowBlur = 15;
-    ctx.beginPath();
-    ctx.arc(handPos.x, handPos.y, 14, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Pulzující kruh kolem prstu
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(handPos.x, handPos.y, 18 + Math.sin(this.animTimer * 6) * 4, 0, Math.PI * 2);
-    ctx.stroke();
+    ctx.font = '26px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('👆', handPos.x, handPos.y);
 
     ctx.restore();
   }

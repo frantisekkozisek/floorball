@@ -19,7 +19,7 @@ export class GameEngine {
   private particles: ParticleSystem;
   public tutorial: TutorialManager;
 
-  public mode: GameMode = 'tutorial';
+  public mode: GameMode = 'shootout';
   public score: GameScore = {
     shotsTotal: 0,
     goals: 0,
@@ -79,6 +79,7 @@ export class GameEngine {
 
     this.setupListeners();
     this.resize();
+    this.startShootout();
   }
 
   private createInitialBall(): Ball {

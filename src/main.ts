@@ -8,6 +8,8 @@ const switchModeBtn = document.getElementById('btn-switch-mode') as HTMLButtonEl
 const tipBanner = document.getElementById('tip-banner') as HTMLDivElement;
 
 const game = new GameEngine(canvas);
+switchModeBtn.innerText = '🎓 Trénink triků';
+tipBanner.innerText = '✏️ Nakresli trasu k brance a Julinka po ní vyrazí!';
 
 // Správa zvuku
 soundToggleBtn.addEventListener('click', () => {
@@ -20,11 +22,11 @@ switchModeBtn.addEventListener('click', () => {
   if (game.mode === 'tutorial') {
     game.startShootout();
     switchModeBtn.innerText = '🎓 Trénink triků';
-    tipBanner.innerText = '⚡ Přejeď prstem na branku pro střelu nebo kličku!';
+    tipBanner.innerText = '✏️ Nakresli trasu k brance a Julinka po ní vyrazí!';
   } else {
     game.startTutorial();
     switchModeBtn.innerText = '🏆 Jít na nájezdy';
-    tipBanner.innerText = '💡 Sleduj animovaný prstík a nauč se triky!';
+    tipBanner.innerText = '💡 Sleduj nápovědu a nauč se triky!';
   }
 });
 
