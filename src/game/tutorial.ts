@@ -25,9 +25,9 @@ export class TutorialManager {
       {
         id: 1,
         trick: 'normal',
-        title: 'Krok 1: Základní střela',
-        subtitle: 'Švihni prstem přímo dopředu',
-        instruction: 'Přejeď prstem od míčku rovně směrem k brance!',
+        title: 'Krok 1: Základní náběh & střela',
+        subtitle: 'Nakresli čáru přímo k brance',
+        instruction: 'Nakresli prstem trasu od Julinky rovně k brance!',
         guidePoints: [
           { x: cx, y: startY },
           { x: cx, y: (startY + endY) / 2 },
@@ -39,8 +39,8 @@ export class TutorialManager {
         id: 2,
         trick: 'toe-drag',
         title: 'Krok 2: Florbalová stahovačka',
-        subtitle: 'Uskoč do strany a vystřel k tyčce',
-        instruction: 'Uhni prstem nejdřív doprava a hned vystřel do branky!',
+        subtitle: 'Uskoč do strany a pak k tyčce',
+        instruction: 'Nakresli trasu s úskokem doprava a pak do branky!',
         guidePoints: [
           { x: cx, y: startY },
           { x: cx + 65, y: startY - 15 },
@@ -52,8 +52,8 @@ export class TutorialManager {
         id: 3,
         trick: 'zorro',
         title: 'Krok 3: Slavný ZORRO trik!',
-        subtitle: 'Zvedni míček obloučkem do šibenice',
-        instruction: 'Opíš prstem plynulý velký oblouk pro zvednutí míčku vzduchem!',
+        subtitle: 'Velký oblouk do horní šibenice',
+        instruction: 'Nakresli plynulý velký oblouk pro zvednutí míčku do vinklu!',
         guidePoints: [
           { x: cx, y: startY },
           { x: cx - 75, y: startY - 80 },

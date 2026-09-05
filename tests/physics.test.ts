@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { analyzeGesture, checkGoalCollision, updateBallPhysics } from '../src/game/physics';
+import { analyzeGesture, analyzeDrawnPath, checkGoalCollision, updateBallPhysics } from '../src/game/physics';
 import { TouchPoint, Ball, GoalDimensions } from '../src/game/types';
 
 describe('Florbalová fyzika & Detekce triků', () => {
@@ -65,6 +65,40 @@ describe('Florbalová fyzika & Detekce triků', () => {
       expect(result?.lift).toBeGreaterThan(0.8);
     });
   });
+
+  describe('analyzeDrawnPath()', () => {
+    it('vyhodnotí přímou trasu jako normal', () => {
+      const path = [
+        { x: 270, y: 780 },
+        { x: 270, y: 600 },
+        { x: 270, y: 400 },
+        { x: 270, y: 250 },
+      ];
+      expect(analyzeDrawnPath(path)).toBe('normal');
+    });
+
+    it('vyhodnotí trasu se stahovačkou jako toe-drag', () => {
+      const path = [
+        { x: 270, y: 780 },
+        { x: 340, y: 760 }, // ostrý zásek do strany
+        { x: 250, y: 450 },
+        { x: 250, y: 250 },
+      ];
+      expect(analyzeDrawnPath(path)).toBe('toe-drag');
+    });
+
+    it('vyhodnotí obloukovou trasu jako zorro', () => {
+      const path = [
+        { x: 270, y: 780 },
+        { x: 180, y: 650 },
+        { x: 160, y: 450 },
+        { x: 230, y: 320 },
+        { x: 300, y: 240 },
+      ];
+      expect(analyzeDrawnPath(path)).toBe('zorro');
+    });
+  });
+
 
   describe('checkGoalCollision()', () => {
     it('detekuje regulérní gól do sítě', () => {

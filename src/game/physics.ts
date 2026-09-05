@@ -104,6 +104,48 @@ export function analyzeGesture(points: TouchPoint[]): ShotParams | null {
 
 
 /**
+ * Analyzuje nakreslenou trasu běhu po hřišti a určí, o jaký florbalový trik šlo:
+ * - 'toe-drag' (stahovačka): trasa má prudký úhyb / zářez do strany
+ * - 'zorro': trasa tvoří plynulý velký oblouk
+ * - 'normal': přímější běh na branku
+ */
+export function analyzeDrawnPath(path: { x: number; y: number }[]): TrickType {
+  if (path.length < 3) return 'normal';
+
+  const start = path[0];
+  const end = path[path.length - 1];
+  const totalDx = end.x - start.x;
+  const totalDy = end.y - start.y;
+  const directDist = Math.max(Math.hypot(totalDx, totalDy), 1);
+
+  let pathLen = 0;
+  let maxDeviation = 0;
+  let hasSharpCut = false;
+
+  for (let i = 1; i < path.length; i++) {
+    const pPrev = path[i - 1];
+    const pCurr = path[i];
+    pathLen += Math.hypot(pCurr.x - pPrev.x, pCurr.y - pPrev.y);
+
+    const num = Math.abs(totalDy * pCurr.x - totalDx * pCurr.y + end.x * start.y - end.y * start.x);
+    const dev = num / directDist;
+    if (dev > maxDeviation) maxDeviation = dev;
+
+    // Detekce ostrého zářezu / stahovačky do strany (pohyb do strany je výrazně větší než dopředu)
+    const stepDx = Math.abs(pCurr.x - pPrev.x);
+    const stepDy = pCurr.y - pPrev.y;
+    if (stepDx > 25 && stepDx > Math.abs(stepDy) * 1.3) {
+      hasSharpCut = true;
+    }
+  }
+
+  if (hasSharpCut) return 'toe-drag';
+  if (maxDeviation > 40 && pathLen / directDist > 1.12) return 'zorro';
+  return 'normal';
+}
+
+
+/**
  * Zkontroluje, zda míček překročil brankovou čáru a zda je to gól, tyčka nebo mimo.
  */
 export function checkGoalCollision(

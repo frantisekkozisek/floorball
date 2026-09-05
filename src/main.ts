@@ -53,10 +53,10 @@ function gameLoop(currentTime: number) {
     lastSyncedMode = game.mode;
     if (game.mode === 'tutorial') {
       switchModeBtn.innerText = '🏆 Jít na nájezdy';
-      tipBanner.innerText = '💡 Tažením prstu veď míček a kličkuj, uvolněním vystřel!';
+      tipBanner.innerText = '✏️ Nakresli prstem trasu a Julinka po ní poběží!';
     } else if (game.mode === 'shootout') {
       switchModeBtn.innerText = '🎓 Trénink triků';
-      tipBanner.innerText = '⚡ Tažením prstu kličkuj před brankářem, uvolněním vystřel!';
+      tipBanner.innerText = '✏️ Nakresli trasu k brance a Julinka po ní vyrazí!';
     } else if (game.mode === 'gameover') {
       switchModeBtn.innerText = '🔄 Nová hra';
       tipBanner.innerText = '🎉 Zápas skončil! Klepni pro další nájezdy!';
