@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="cs">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#0f172a" />
+    <title>Julinka: Florbalová Hvězda</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='45' fill='%23ffffff'/><circle cx='50' cy='50' r='7' fill='%2394a3b8'/><circle cx='30' cy='30' r='7' fill='%2394a3b8'/><circle cx='70' cy='30' r='7' fill='%2394a3b8'/><circle cx='30' cy='70' r='7' fill='%2394a3b8'/><circle cx='70' cy='70' r='7' fill='%2394a3b8'/></svg>" />
+  </head>
+  <body>
+    <div id="app">
+      <div class="top-bar">
+        <button id="btn-sound-toggle" class="btn">🔊 Zvuk ZAPNUT</button>
+        <button id="btn-switch-mode" class="btn btn-primary">🏆 Jít na nájezdy</button>
+      </div>
+
+      <div id="game-container">
+        <canvas id="game-canvas"></canvas>
+      </div>
+
+      <div id="tip-banner" class="tip-banner">
+        💡 Sleduj animovaný prstík a nauč se triky!
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
