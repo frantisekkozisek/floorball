@@ -1189,30 +1189,30 @@ export class GameEngine {
    */
   private drawHUD(ctx: CanvasRenderingContext2D) {
     if (this.mode === 'shootout') {
-      // Horní panel skóre
-      ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+      // Horní panel skóre (stavová lišta)
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
       ctx.beginPath();
       ctx.roundRect(20, 16, this.V_WIDTH - 40, 60, 16);
       ctx.fill();
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
       ctx.lineWidth = 1.5;
       ctx.stroke();
 
       ctx.fillStyle = '#f8fafc';
-      ctx.font = 'bold 16px sans-serif';
+      ctx.font = 'bold 18px sans-serif';
       ctx.textAlign = 'left';
-      ctx.fillText(`NÁJEZD ${this.score.currentShot}/${this.score.maxShots}`, 36, 52);
+      ctx.fillText(`NÁJEZD ${this.score.currentShot} / ${this.score.maxShots}`, 40, 52);
 
-      // Zobrazení úrovně brankáře uprostřed horního panelu
+      // Zobrazení úrovně brankáře uprostřed stavové lišty
       ctx.textAlign = 'center';
       ctx.fillStyle = '#ffe600';
-      ctx.font = 'bold 15px sans-serif';
+      ctx.font = 'bold 16px sans-serif';
       ctx.fillText(this.goalieAI.config.badge, this.V_WIDTH / 2, 52);
 
       ctx.textAlign = 'right';
       ctx.fillStyle = '#00ffcc';
-      ctx.font = 'bold 16px sans-serif';
-      ctx.fillText(`GÓLY: ${this.score.goals}`, this.V_WIDTH - 36, 52);
+      ctx.font = 'bold 18px sans-serif';
+      ctx.fillText(`GÓLY: ${this.score.goals}`, this.V_WIDTH - 40, 52);
     } else if (this.mode === 'tutorial') {
       const step = this.tutorial.getCurrentStep();
       if (step) {
@@ -1230,20 +1230,6 @@ export class GameEngine {
         ctx.font = '14px sans-serif';
         ctx.fillText(step.instruction, this.V_WIDTH / 2, 74);
       }
-
-      // Tlačítko pro okamžité přeskočení tréninku na hrací ploše
-      ctx.fillStyle = 'rgba(255, 42, 109, 0.9)';
-      ctx.beginPath();
-      ctx.roundRect(this.V_WIDTH / 2 - 130, 855, 260, 46, 23);
-      ctx.fill();
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 15px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('🏆 JÍT NA NÁJEZDY ⏩', this.V_WIDTH / 2, 884);
     }
   }
 
@@ -1335,6 +1321,14 @@ export class GameEngine {
         this.resetBall();
       }
       return;
+    }
+
+    if (this.mode === 'shootout') {
+      // Klepnutí na odznak brankáře ve stavové liště nahoře (y: 16-76, střed x)
+      if (y >= 16 && y <= 76 && x >= this.V_WIDTH / 2 - 75 && x <= this.V_WIDTH / 2 + 75) {
+        this.cycleGoalieLevel();
+        return;
+      }
     }
 
     if (this.mode === 'tutorial') {

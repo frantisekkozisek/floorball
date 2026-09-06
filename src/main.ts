@@ -128,8 +128,15 @@ function gameLoop(currentTime: number) {
     }
   }
 
+  const currentGoalieLevel = game.getGoalieLevel();
+  if (currentGoalieLevel !== lastGoalieLevel) {
+    lastGoalieLevel = currentGoalieLevel;
+    updateGoalieButtonLabel();
+  }
+
   requestAnimationFrame(gameLoop);
 }
 
+let lastGoalieLevel = '';
 requestAnimationFrame(gameLoop);
 
