@@ -155,17 +155,26 @@ export class GameEngine {
 
     const onStart = (pos: { x: number; y: number }) => {
       soundManager.ensureAudio();
-      this.isPointerDown = true;
-      this.touchPoints = [{ x: pos.x, y: pos.y, time: performance.now() }];
 
-      // Zkontrolujeme, zda uživatel nekliknul na tlačítko "Přeskočit trénink"
+      // Pokud je hra ukončena (GameOver), jakýkoliv dotyk okamžitě spustí novou hru!
+      if (this.mode === 'gameover') {
+        this.isPointerDown = false;
+        this.isDrawingPath = false;
+        this.startShootout();
+        return;
+      }
+
+      // Zkontrolujeme, zda uživatel nekliknul na tlačítko "Přeskočit trénink / Jít na nájezdy"
       if (this.mode === 'tutorial') {
-        if (pos.x >= this.V_WIDTH / 2 - 140 && pos.x <= this.V_WIDTH / 2 + 140 && pos.y >= 850 && pos.y <= 910) {
+        if (pos.x >= this.V_WIDTH / 2 - 140 && pos.x <= this.V_WIDTH / 2 + 140 && pos.y >= 840 && pos.y <= 920) {
           this.startShootout();
           this.isPointerDown = false;
           return;
         }
       }
+
+      this.isPointerDown = true;
+      this.touchPoints = [{ x: pos.x, y: pos.y, time: performance.now() }];
 
       // Začátek kreslení trasy pro Julinku
       if (!this.ball.isMoving && !this.isRunningPath) {
@@ -201,6 +210,13 @@ export class GameEngine {
     };
 
     const onEnd = (pos: { x: number; y: number }) => {
+      if (this.mode === 'gameover') {
+        this.isPointerDown = false;
+        this.isDrawingPath = false;
+        this.startShootout();
+        return;
+      }
+
       if (!this.isPointerDown) return;
       this.isPointerDown = false;
       this.touchPoints.push({ x: pos.x, y: pos.y, time: performance.now() });
@@ -1211,14 +1227,12 @@ export class GameEngine {
   public handleClickAt(x: number, y: number) {
     if (this.mode === 'tutorial') {
       // Kliknutí na tlačítko Jít na nájezdy v tutoriálu
-      if (x >= this.V_WIDTH / 2 - 130 && x <= this.V_WIDTH / 2 + 130 && y >= 855 && y <= 901) {
+      if (x >= this.V_WIDTH / 2 - 140 && x <= this.V_WIDTH / 2 + 140 && y >= 840 && y <= 920) {
         this.startShootout();
       }
     } else if (this.mode === 'gameover') {
-      // Kliknutí na tlačítko Hrát znovu
-      if (x >= this.V_WIDTH / 2 - 130 && x <= this.V_WIDTH / 2 + 130 && y >= 560 && y <= 624) {
-        this.startShootout();
-      }
+      // V režimu gameover jakýkoliv dotyk spustí novou hru
+      this.startShootout();
     }
   }
 }
