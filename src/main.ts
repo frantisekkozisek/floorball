@@ -26,7 +26,7 @@ const previewNumber = document.getElementById('preview-number') as HTMLDivElemen
 
 const game = new GameEngine(canvas);
 switchModeBtn.innerText = '🎓 Trénink triků';
-tipBanner.innerText = '🎯 Pro vinkl ⭐ nebo břevno 🚀 táhni prstem až do branky!';
+tipBanner.innerText = '🎯 Zamiř do branky – zámek sám zacvakne do vinklu ⭐ nebo břevna 🚀! (mířidlo je 5 cm nad prstem)';
 
 // Aktualizace tlačítka hráče
 const updatePlayerButton = () => {
@@ -204,7 +204,7 @@ const handleSwitchMode = (e?: Event) => {
   if (game.mode === 'gameover' || game.mode === 'tutorial') {
     game.startShootout();
     switchModeBtn.innerText = '🎓 Trénink triků';
-    tipBanner.innerText = '🎯 Pro vinkl ⭐ nebo břevno 🚀 táhni prstem až do branky!';
+    tipBanner.innerText = '🎯 Zamiř do branky – zámek sám zacvakne do vinklu ⭐ nebo břevna 🚀! (mířidlo je 5 cm nad prstem)';
   } else {
     game.startTutorial();
     switchModeBtn.innerText = '🏆 Jít na nájezdy';
@@ -221,15 +221,21 @@ const handleCanvasClick = (e: MouseEvent | PointerEvent) => {
   const scaleY = game.V_HEIGHT / (rect.height || 1);
   const clickX = (e.clientX - rect.left) * scaleX;
   const clickY = (e.clientY - rect.top) * scaleY;
+  
   game.handleClickAt(clickX, clickY);
+  if (playerCustomBtn) {
+    updatePlayerButton();
+  }
 };
+canvas.addEventListener('pointerdown', handleCanvasClick);
 canvas.addEventListener('click', handleCanvasClick);
 
 // Kliknutí na spodní banner v režimu GameOver
 const handleTipBannerClick = () => {
   if (game.mode === 'gameover') {
-    soundManager.ensureAudio();
     game.startShootout();
+    switchModeBtn.innerText = '🎓 Trénink triků';
+    tipBanner.innerText = '🎯 Zamiř do branky – zámek sám zacvakne do vinklu ⭐ nebo břevna 🚀! (mířidlo je 5 cm nad prstem)';
   }
 };
 tipBanner.addEventListener('pointerdown', handleTipBannerClick);
@@ -253,7 +259,7 @@ function gameLoop(currentTime: number) {
       tipBanner.innerText = '✏️ Nakresli prstem trasu a Julinka po ní poběží!';
     } else if (game.mode === 'shootout') {
       switchModeBtn.innerText = '🎓 Trénink triků';
-      tipBanner.innerText = '🎯 Pro vinkl ⭐ nebo břevno 🚀 táhni prstem až do branky!';
+      tipBanner.innerText = '🎯 Zamiř do branky – zámek sám zacvakne do vinklu ⭐ nebo břevna 🚀! (mířidlo je 5 cm nad prstem)';
     } else if (game.mode === 'gameover') {
       switchModeBtn.innerText = '🔄 Nová hra';
       tipBanner.innerText = '🎉 Zápas skončil! Klepni pro další nájezdy!';

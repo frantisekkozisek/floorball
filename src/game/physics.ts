@@ -150,11 +150,85 @@ export function analyzeDrawnPath(path: { x: number; y: number }[]): TrickType {
  * 2. `shotTarget`: přesný cíl v brance (x, y v brankovém rámu, výška z a atraktivní popisek).
  * 3. `releasePoint`: bod, odkud Julinka po doběhu vystřelí.
  */
+export const AIM_OFFSET_Y = 55; // Zaměřovač 55 px nad prstem hráče
+export const SNAP_ENTER_RADIUS = 54; // Vzdálenost pro magnetické přitažení do kapsy
+export const SNAP_HOLD_RADIUS = 76;  // Hystereze pro udržení zámku
+
+export interface GoalPocket {
+  id: string;
+  x: number;
+  y: number;
+  z: number;
+  label: string;
+  badgeColor: string;
+}
+
+export function getGoalTargetPockets(goal: GoalDimensions): GoalPocket[] {
+  const xL = goal.x - goal.width * 0.38;
+  const xR = goal.x + goal.width * 0.38;
+  const xM = goal.x;
+
+  const yTop = goal.y - goal.height * 0.80; // vinkly
+  const yBar = goal.y - goal.height * 0.88; // břevno
+  const yBottom = goal.y - 18;             // tyčky u země
+
+  return [
+    {
+      id: 'vinkl_left',
+      label: '⭐ LEVÝ VINKL!',
+      badgeColor: '#ffe600',
+      x: xL,
+      y: yTop,
+      z: 118,
+    },
+    {
+      id: 'bar',
+      label: '🚀 POD BŘEVNO!',
+      badgeColor: '#00ffcc',
+      x: xM,
+      y: yBar,
+      z: 124,
+    },
+    {
+      id: 'vinkl_right',
+      label: '⭐ PRAVÝ VINKL!',
+      badgeColor: '#ffe600',
+      x: xR,
+      y: yTop,
+      z: 118,
+    },
+    {
+      id: 'post_left',
+      label: '⚡ K LEVÉ TYČI!',
+      badgeColor: '#ff2a6d',
+      x: goal.x - goal.width * 0.40,
+      y: yBottom,
+      z: 22,
+    },
+    {
+      id: 'post_right',
+      label: '⚡ K PRAVÉ TYČI!',
+      badgeColor: '#ff2a6d',
+      x: goal.x + goal.width * 0.40,
+      y: yBottom,
+      z: 22,
+    },
+  ];
+}
+
+/**
+ * Rozdělí nakreslené body tahu na:
+ * 1. `runPath`: trasu běhu Julinky po palubovce (zastaví se před brankovištěm na Y >= 285).
+ * 2. `shotTarget`: přesný cíl v brance s magnetickým zámkem do 5 kapes (s posunem 55 px nad prst).
+ * 3. `releasePoint`: bod, odkud Julinka po doběhu vystřelí.
+ */
 export function partitionStroke(
   points: { x: number; y: number }[],
-  goal: GoalDimensions
+  goal: GoalDimensions,
+  previousTarget?: ShotTarget | null
 ): PartitionedStroke {
   const MIN_RUN_Y = 285; // Přední hranice brankoviště – kam Julinka doběhne
+  const pockets = getGoalTargetPockets(goal);
 
   if (!points || points.length === 0) {
     const defaultTarget: ShotTarget = {
@@ -171,23 +245,7 @@ export function partitionStroke(
     };
   }
 
-  if (points.length === 1) {
-    const p = points[0];
-    const defaultTarget: ShotTarget = {
-      x: goal.x,
-      y: goal.y - 70,
-      z: 70,
-      label: 'PŘÍMÁ STŘELA! 🎯',
-      badgeColor: '#00ffcc',
-    };
-    return {
-      runPath: [p],
-      shotTarget: defaultTarget,
-      releasePoint: p,
-    };
-  }
-
-  // Hledáme bod přechodu, kde tah opouští palubovku a začíná mířit do branky (y < MIN_RUN_Y)
+  // 1. Rozdělení trasy běhu (zastaví se před brankovištěm na MIN_RUN_Y)
   let transitionIdx = -1;
   for (let i = 0; i < points.length; i++) {
     if (points[i].y < MIN_RUN_Y) {
@@ -198,188 +256,114 @@ export function partitionStroke(
 
   let runPath: { x: number; y: number }[] = [];
   let releasePoint: { x: number; y: number };
-  let targetX = goal.x;
-  let targetY = goal.y - 70;
-  let targetZ = 70;
 
   if (transitionIdx > 0) {
     // Část bodů je na hřišti a konec tahu míří do branky
     runPath = points.slice(0, transitionIdx);
     const pBefore = points[transitionIdx - 1];
     const pAfter = points[transitionIdx];
-
-    // Interpolace bodu přesně na hranici MIN_RUN_Y pro plynulý doběh
     const ratio = (MIN_RUN_Y - pBefore.y) / (pAfter.y - pBefore.y);
     const clampedRatio = Math.max(0, Math.min(1, ratio));
-    const boundaryX = pBefore.x + (pAfter.x - pBefore.x) * clampedRatio;
-    releasePoint = { x: boundaryX, y: MIN_RUN_Y };
+    releasePoint = {
+      x: pBefore.x + (pAfter.x - pBefore.x) * clampedRatio,
+      y: MIN_RUN_Y,
+    };
     runPath.push(releasePoint);
-
-    // Cíl střely je určen bodem tahu v brance s magnetickým přitahováním k terčům
-    const lastPoint = points[points.length - 1];
-    const minGoalX = goal.x - goal.width * 0.44;
-    const maxGoalX = goal.x + goal.width * 0.44;
-    const rawX = Math.max(minGoalX, Math.min(maxGoalX, lastPoint.x));
-    const rawY = Math.max(goal.y - goal.height + 8, Math.min(goal.y - 6, lastPoint.y));
-    const rawZ = goal.y - rawY;
-
-    // Magnetické zóny v brance (vinkly, břevno, tyčky):
-    // Zabraňuje náhodnému poskočení při zvednutí prstu z displeje!
-    const isTopZone = lastPoint.y < goal.y - goal.height * 0.48; // horní polovina (vinkly / břevno)
-    const isBottomZone = lastPoint.y >= goal.y - 45; // spodní zóna (k tyčím / zem)
-    const isLeftSector = rawX < goal.x - 30;
-    const isRightSector = rawX > goal.x + 30;
-
-    if (isTopZone) {
-      if (isLeftSector) {
-        // LEVÝ VINKL ⭐
-        targetX = goal.x - goal.width * 0.38;
-        targetZ = 120;
-      } else if (isRightSector) {
-        // PRAVÝ VINKL ⭐
-        targetX = goal.x + goal.width * 0.38;
-        targetZ = 120;
-      } else {
-        // POD BŘEVNO 🚀
-        targetX = goal.x;
-        targetZ = 124;
-      }
-    } else if (isBottomZone) {
-      if (isLeftSector) {
-        // K LEVÉ TYČI ⚡
-        targetX = goal.x - goal.width * 0.40;
-        targetZ = 20;
-      } else if (isRightSector) {
-        // K PRAVÉ TYČI ⚡
-        targetX = goal.x + goal.width * 0.40;
-        targetZ = 20;
-      } else {
-        // PO ZEMI 🎯
-        targetX = goal.x;
-        targetZ = 22;
-      }
-    } else {
-      // Střední výška
-      targetX = rawX;
-      targetZ = Math.max(45, Math.min(75, rawZ));
-    }
-    targetY = goal.y - targetZ;
   } else if (transitionIdx === 0) {
     // Tah začal rovnou v zóně branky
     releasePoint = { x: points[0].x, y: MIN_RUN_Y };
     runPath = [{ x: points[0].x, y: MIN_RUN_Y }];
-    const lastPoint = points[points.length - 1];
-    const minGoalX = goal.x - goal.width * 0.44;
-    const maxGoalX = goal.x + goal.width * 0.44;
-    const rawX = Math.max(minGoalX, Math.min(maxGoalX, lastPoint.x));
-    const rawY = Math.max(goal.y - goal.height + 8, Math.min(goal.y - 6, lastPoint.y));
-    const rawZ = goal.y - rawY;
-
-    const isTopZone = lastPoint.y < goal.y - goal.height * 0.48;
-    const isBottomZone = lastPoint.y >= goal.y - 45;
-    const isLeftSector = rawX < goal.x - 30;
-    const isRightSector = rawX > goal.x + 30;
-
-    if (isTopZone) {
-      if (isLeftSector) {
-        targetX = goal.x - goal.width * 0.38;
-        targetZ = 120;
-      } else if (isRightSector) {
-        targetX = goal.x + goal.width * 0.38;
-        targetZ = 120;
-      } else {
-        targetX = goal.x;
-        targetZ = 124;
-      }
-    } else if (isBottomZone) {
-      if (isLeftSector) {
-        targetX = goal.x - goal.width * 0.40;
-        targetZ = 20;
-      } else if (isRightSector) {
-        targetX = goal.x + goal.width * 0.40;
-        targetZ = 20;
-      } else {
-        targetX = goal.x;
-        targetZ = 22;
-      }
-    } else {
-      targetX = rawX;
-      targetZ = Math.max(45, Math.min(75, rawZ));
-    }
-    targetY = goal.y - targetZ;
   } else {
-    // Všechny body jsou na palubovce (y >= MIN_RUN_Y)
+    // Všechny body jsou na palubovce
     runPath = [...points];
     releasePoint = points[points.length - 1];
-
-    // Použijeme průměr z posledních bodů pro potlačení chvění prstu při zvednutí
-    const sampleCount = Math.min(6, points.length);
-    const pEnd = points[points.length - 1];
-    const pStart = points[Math.max(0, points.length - sampleCount)];
-    const dx = pEnd.x - pStart.x;
-    const dy = pEnd.y - pStart.y;
-
-    if (dy < -2) {
-      // Směr nahoru k brance -> projekce na brankovou čáru
-      const t = (goal.y - pEnd.y) / dy;
-      const projX = pEnd.x + dx * t;
-      targetX = Math.max(goal.x - goal.width * 0.42, Math.min(goal.x + goal.width * 0.42, projX));
-    } else {
-      targetX = Math.max(goal.x - goal.width * 0.42, Math.min(goal.x + goal.width * 0.42, pEnd.x));
-    }
-
-    const trick = analyzeDrawnPath(points);
-    if (trick === 'zorro') {
-      targetZ = 120; // Zorro trik zvedá míček pod břevno
-    } else if (trick === 'toe-drag') {
-      targetZ = 22; // Stahovačka po zemi
-    } else {
-      // Pokud hráč švihl prudce nahoru směrem k břevnu
-      const isUpwardFlick = dy < -25;
-      if (isUpwardFlick) {
-        targetZ = 118; // Zvednutá střela pod břevno
-      } else {
-        targetZ = 65; // Střední výška
-      }
-    }
-    targetY = goal.y - targetZ;
   }
 
-  // Vyhodnocení florbalového popisku pro cíl střely
-  const leftBound = goal.x - 35;
-  const rightBound = goal.x + 35;
-  const isLeft = targetX < leftBound;
-  const isRight = targetX > rightBound;
-  const isHigh = targetZ >= 80;
-  const isLow = targetZ <= 40;
+  // 2. Výpočet virtuálního zaměřovacího bodu (aimPos) s offsetem 55 px nad prst
+  const lastPoint = points[points.length - 1];
+  let aimPos: { x: number; y: number };
 
-  let label = 'PŘÍMÁ STŘELA! 🎯';
+  if (lastPoint.y < MIN_RUN_Y + 70) {
+    // Prst je v horní části u branky -> virtuální mířidlo je 55 px nad prstem
+    // Omezíme mířidlo, aby nepřestřelilo nad břevno ani pod brankovou čáru
+    const minSightY = goal.y - goal.height * 0.92;
+    const maxSightY = goal.y - 10;
+    aimPos = {
+      x: lastPoint.x,
+      y: Math.max(minSightY, Math.min(maxSightY, lastPoint.y - AIM_OFFSET_Y)),
+    };
+  } else {
+    // Prst je na palubovce -> projekce ze směru posledních bodů tahu
+    const sampleCount = Math.min(6, points.length);
+    const pStart = points[Math.max(0, points.length - sampleCount)];
+    const dx = lastPoint.x - pStart.x;
+    const dy = lastPoint.y - pStart.y;
+
+    if (dy < -2) {
+      const t = (goal.y - 70 - lastPoint.y) / dy;
+      aimPos = {
+        x: lastPoint.x + dx * t,
+        y: goal.y - 70,
+      };
+    } else {
+      aimPos = {
+        x: lastPoint.x,
+        y: goal.y - 70,
+      };
+    }
+  }
+
+  // 3. Hledání magnetické kapsy v brance s hysterezí
+  let matchedPocket: GoalPocket | null = null;
+  let minPocketDist = Infinity;
+
+  for (const pocket of pockets) {
+    const dist = Math.hypot(aimPos.x - pocket.x, aimPos.y - pocket.y);
+    const isPreviouslyLocked = previousTarget && previousTarget.label === pocket.label;
+    const threshold = isPreviouslyLocked ? SNAP_HOLD_RADIUS : SNAP_ENTER_RADIUS;
+
+    if (dist <= threshold && dist < minPocketDist) {
+      minPocketDist = dist;
+      matchedPocket = pocket;
+    }
+  }
+
+  let targetX = goal.x;
+  let targetY = goal.y - 70;
+  let targetZ = 70;
+  let label = '🎯 PŘÍMÁ STŘELA!';
   let badgeColor = '#00ffcc';
 
-  if (isLeft && isHigh) {
-    label = 'LEVÝ VINKL! ⭐';
-    badgeColor = '#ffe600';
-  } else if (isRight && isHigh) {
-    label = 'PRAVÝ VINKL! ⭐';
-    badgeColor = '#ffe600';
-  } else if (isHigh) {
-    label = 'POD BŘEVNO! 🚀';
-    badgeColor = '#00ffcc';
-  } else if (isLeft && isLow) {
-    label = 'K LEVÉ TYČI! ⚡';
-    badgeColor = '#ff2a6d';
-  } else if (isRight && isLow) {
-    label = 'K PRAVÉ TYČI! ⚡';
-    badgeColor = '#ff2a6d';
-  } else if (isLeft) {
-    label = 'K LEVÉ TYČI! ⚡';
-    badgeColor = '#05d9e8';
-  } else if (isRight) {
-    label = 'K PRAVÉ TYČI! ⚡';
-    badgeColor = '#05d9e8';
-  } else if (isLow) {
-    label = 'PO ZEMI! 🎯';
-    badgeColor = '#00ffcc';
+  if (matchedPocket) {
+    targetX = matchedPocket.x;
+    targetY = matchedPocket.y;
+    targetZ = matchedPocket.z;
+    label = matchedPocket.label;
+    badgeColor = matchedPocket.badgeColor;
+  } else {
+    // Cíl je v prostoru sítě mimo magnetické rohy
+    const minGoalX = goal.x - goal.width * 0.42;
+    const maxGoalX = goal.x + goal.width * 0.42;
+    targetX = Math.max(minGoalX, Math.min(maxGoalX, aimPos.x));
+    targetY = Math.max(goal.y - goal.height + 10, Math.min(goal.y - 10, aimPos.y));
+    targetZ = Math.max(15, Math.min(125, goal.y - targetY));
+
+    if (targetZ >= 85) {
+      label = '🚀 POD BŘEVNO!';
+      badgeColor = '#00ffcc';
+    } else if (targetZ <= 35) {
+      label = '🎯 PO ZEMI!';
+      badgeColor = '#00ffcc';
+    } else if (targetX < goal.x - 30) {
+      label = '⚡ K LEVÉ TYČI!';
+      badgeColor = '#ff2a6d';
+    } else if (targetX > goal.x + 30) {
+      label = '⚡ K PRAVÉ TYČI!';
+      badgeColor = '#ff2a6d';
+    } else {
+      label = '🎯 PŘÍMÁ STŘELA!';
+      badgeColor = '#00ffcc';
+    }
   }
 
   return {

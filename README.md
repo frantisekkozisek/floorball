@@ -10,11 +10,17 @@ Hra nabízí 2.5D arkádový styl z pohledu zezadu, interaktivní **Florbalovou 
 ### Kreslení trasy běhu & Cílení do branky (Varianta 1)
 Jediným plynulým tahem prstu po displeji určíte celou akci:
 1. **Trasa běhu po hřišti:** Na palubovce se vykresluje svítící neonová trasa s animovanými šipkami, kudy Julinka poběží s míčkem.
-2. **Zamíření do branky:** Tah prstu vyvedený do brankového rámu okamžitě aktivuje zaměřovací laser a interaktivní terč 🎯:
-   - **Levý / pravý vinkl (⭐):** Zakončení do horních rohů sítě.
-   - **Pod břevno (🚀):** Vysoká pumelice pod horní tyč.
-   - **K tyči po zemi (⚡):** Rychlá přízemní střela do protipohybu.
-3. **Akce po zvednutí prstu:** Julinka bleskově vyrazí po nakreslené trase, vede míček na hokejce, před brankovištěm napřáhne a odpálí míček přesně do vybraného cíle v brance!
+2. **Virtuální mířidlo nad prstem (offset 55 px):** Prst na mobilním displeji nikdy nezakrývá branku ani gólmana – zaměřovací kříž je promítán 55 px nad špičku prstu s jemnou čárkovanou spojnicí.
+3. **5 velkých magnetických kapes v síti:**
+   - **⭐ LEVÝ VINKL:** Zakončení do levého horního rohu sítě (vysoká trajektorie, +500 b).
+   - **🚀 POD BŘEVNO:** Střední pumelice přímo pod horní břevno (+350 b).
+   - **⭐ PRAVÝ VINKL:** Zakončení do pravého horního rohu sítě (+500 b).
+   - **⚡ K LEVÉ TYČI:** Přízemní rána k levé tyči do protipohybu brankáře (+250 b).
+   - **⚡ K PRAVÉ TYČI:** Přízemní rána k pravé tyči (+250 b).
+4. **Magnetický zámek s hysterezí & akustickou odezvou:**
+   - Jakmile se virtuální mířidlo přiblíží ke kapse na 54 px, cíl magneticky zacvakne (`soundManager.playAimSnap()`).
+   - Díky záchytné hysterezi (76 px) zámek spolehlivě drží i při drobném chvění prstu při zvednutí z displeje.
+5. **Akce po zvednutí prstu:** Julinka bleskově vyrazí po nakreslené trase, vede míček na hokejce, před brankovištěm napřáhne a odpálí míček přesně do vybrané kapsy v brance! Styl triku (běžná rána, stahovačka, zorro) obohatí animaci a skóre, ale nikdy nezmění hráčem zvolený cíl v brance.
 
 ---
 

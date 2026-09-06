@@ -1,5 +1,5 @@
 import { Ball, GameScore, GameMode, GoalDimensions, TouchPoint, TrickType, ShotTarget, GoalieLevel, GoalieConfig, PlayerConfig, LeaderboardEntry } from './types';
-import { analyzeGesture, analyzeDrawnPath, checkGoalCollision, updateBallPhysics, partitionStroke, calculateShotVelocity } from './physics';
+import { analyzeGesture, analyzeDrawnPath, checkGoalCollision, updateBallPhysics, partitionStroke, calculateShotVelocity, getGoalTargetPockets, AIM_OFFSET_Y } from './physics';
 import { GoalkeeperAI } from './goalkeeper';
 import { ParticleSystem } from './particles';
 import { TutorialManager } from './tutorial';
@@ -413,10 +413,16 @@ export class GameEngine {
   }
 
   private updatePartitionedStroke() {
-    const partitioned = partitionStroke(this.rawDrawnPoints, this.goal);
+    const prevLabel = this.shotTarget?.label;
+    const partitioned = partitionStroke(this.rawDrawnPoints, this.goal, this.shotTarget);
     this.drawnPath = partitioned.runPath;
     this.shotTarget = partitioned.shotTarget;
     this.releasePoint = partitioned.releasePoint;
+
+    // Pokud došlo k uzamčení nové magnetické kapsy, přehrajeme uspokojivý zvukový klik
+    if (this.shotTarget && this.shotTarget.label !== prevLabel) {
+      soundManager.playAimSnap();
+    }
   }
 
   private attemptShot(releasePos?: { x: number; y: number }) {
@@ -451,20 +457,34 @@ export class GameEngine {
     soundManager.playStickHit();
     this.stickAngle = 0.6; // prudký švih hokejkou
 
-    const dx = shot.targetX - this.ball.x;
-    const dy = shot.targetY - this.ball.y;
-    const dist = Math.hypot(dx, dy);
+    let targetX = shot.targetX;
+    let targetY = shot.targetY;
+    let targetZ = shot.lift * 130;
 
-    this.ball.vx = (dx / dist) * shot.speed;
-    this.ball.vy = (dy / dist) * shot.speed;
-    this.ball.vz = shot.lift * 260;
+    // Striktní priorita zaměřeného terče v brance (hráčův cíl se nikdy nepřepíše!)
+    if (this.shotTarget) {
+      targetX = this.shotTarget.x;
+      targetY = this.shotTarget.y;
+      targetZ = this.shotTarget.z;
+    }
+
+    const shotVel = calculateShotVelocity(
+      { x: this.ball.x, y: this.ball.y },
+      { x: targetX, y: targetY, z: targetZ },
+      this.goal.y,
+      shot.speed
+    );
+
+    this.ball.vx = shotVel.vx;
+    this.ball.vy = shotVel.vy;
+    this.ball.vz = shotVel.vz;
     this.ball.isMoving = true;
 
     if (shot.type === 'zorro') {
       soundManager.playWhoosh();
     }
 
-    this.goalieAI.onShotInitiated(shot.type, shot.targetX);
+    this.goalieAI.onShotInitiated(shot.type, targetX);
 
     // Zpracování v tutoriálu
     if (this.mode === 'tutorial') {
@@ -810,6 +830,35 @@ export class GameEngine {
       ctx.stroke();
     }
 
+    // 2b. Jemné virtuální mířidlo nad prstem hráče (odkrývá výhled na síť a kapsy)
+    if (this.isDrawingPath && this.drawnPath.length > 0) {
+      const fingerPos = this.drawnPath[this.drawnPath.length - 1];
+      if (fingerPos.y < 355) {
+        const sightY = fingerPos.y - AIM_OFFSET_Y;
+        // Spojovací čárkovaná linie od prstu nahoru k mířidlu
+        ctx.beginPath();
+        ctx.moveTo(fingerPos.x, fingerPos.y);
+        ctx.lineTo(fingerPos.x, sightY);
+        ctx.strokeStyle = 'rgba(255, 230, 0, 0.55)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 4]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Malý zaměřovací terčík přímo v bodě mířidla
+        ctx.beginPath();
+        ctx.arc(fingerPos.x, sightY, 7, 0, Math.PI * 2);
+        ctx.strokeStyle = '#ffe600';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(fingerPos.x, sightY, 2, 0, Math.PI * 2);
+        ctx.fillStyle = '#ff2a6d';
+        ctx.fill();
+      }
+    }
+
     // 3. Zaměřovací paprsek a cílový terč v brance
     if (this.shotTarget && (this.isDrawingPath || this.isRunningPath || this.ball.isMoving)) {
       const target = this.shotTarget;
@@ -1010,58 +1059,99 @@ export class GameEngine {
   }
 
   /**
-   * Vykreslení interaktivních terčů v síti branky pro přesné zamíření
+   * Vykreslení 5 velkých interaktivních kapes v síti branky pro přesné zamíření
    */
   private drawGoalTargets(ctx: CanvasRenderingContext2D) {
-    const g = this.goal;
-    const xL = g.x - g.width / 2;
-    const xR = g.x + g.width / 2;
-    const yTop = g.y - g.height;
-
-    const targets = [
-      { id: 'vinkl_left', x: xL + 28, y: yTop + 24, label: '⭐ VINKL', color: '#ffe600' },
-      { id: 'vinkl_right', x: xR - 28, y: yTop + 24, label: '⭐ VINKL', color: '#ffe600' },
-      { id: 'bar', x: g.x, y: yTop + 18, label: '🚀 BŘEVNO', color: '#00ffcc' },
-      { id: 'post_left', x: xL + 28, y: g.y - 18, label: '⚡ TYČ', color: '#ff2a6d' },
-      { id: 'post_right', x: xR - 28, y: g.y - 18, label: '⚡ TYČ', color: '#ff2a6d' },
-    ];
-
+    const pockets = getGoalTargetPockets(this.goal);
     const isAiming = this.isDrawingPath || this.isRunningPath || this.ball.isMoving;
-    const pulse = Math.sin(performance.now() * 0.007) * 2.5;
+    const pulse = Math.sin(performance.now() * 0.008) * 3;
+    const rot = performance.now() * 0.002;
 
-    for (const t of targets) {
-      const isSelected = this.shotTarget && Math.hypot(this.shotTarget.x - t.x, this.shotTarget.y - t.y) < 32;
-      const alpha = isSelected ? 0.95 : (isAiming ? 0.55 : 0.28);
-      const radius = (isSelected ? 18 : 13) + (isSelected ? pulse : 0);
+    for (const p of pockets) {
+      const isSelected = this.shotTarget && (
+        this.shotTarget.label === p.label ||
+        Math.hypot(this.shotTarget.x - p.x, this.shotTarget.y - p.y) < 15
+      );
+      const alpha = isSelected ? 1.0 : (isAiming ? 0.65 : 0.35);
+      const radius = isSelected ? 26 + pulse : 18;
 
       ctx.save();
+
+      // Vnější animovaný prstenec pro zamčený terč
+      if (isSelected) {
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(rot);
+        ctx.beginPath();
+        ctx.arc(0, 0, radius + 8, 0, Math.PI * 2);
+        ctx.strokeStyle = p.badgeColor;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([8, 6]);
+        ctx.shadowColor = p.badgeColor;
+        ctx.shadowBlur = 16;
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Hlavní tělo kapsy
       ctx.beginPath();
-      ctx.arc(t.x, t.y, radius, 0, Math.PI * 2);
-      ctx.fillStyle = isSelected ? 'rgba(15, 23, 42, 0.75)' : 'rgba(15, 23, 42, 0.35)';
+      ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+      ctx.fillStyle = isSelected ? 'rgba(15, 23, 42, 0.85)' : 'rgba(15, 23, 42, 0.4)';
       ctx.fill();
 
-      ctx.strokeStyle = t.color;
+      ctx.strokeStyle = p.badgeColor;
       ctx.globalAlpha = alpha;
-      ctx.lineWidth = isSelected ? 2.5 : 1.5;
+      ctx.lineWidth = isSelected ? 3.5 : 2;
       if (!isSelected) {
-        ctx.setLineDash([4, 3]);
+        ctx.setLineDash([5, 4]);
       }
       ctx.stroke();
 
       if (isSelected) {
-        ctx.shadowColor = t.color;
-        ctx.shadowBlur = 12;
+        ctx.shadowColor = p.badgeColor;
+        ctx.shadowBlur = 18;
         ctx.stroke();
+
+        // Zaměřovací kříž v uzamčené kapse
+        ctx.beginPath();
+        ctx.moveTo(p.x - radius * 0.7, p.y);
+        ctx.lineTo(p.x + radius * 0.7, p.y);
+        ctx.moveTo(p.x, p.y - radius * 0.7);
+        ctx.lineTo(p.x, p.y + radius * 0.7);
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Středový bod
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+        ctx.fill();
       }
 
-      // Popisek terče
+      ctx.shadowBlur = 0;
+
+      // Štítek terče (např. ⭐ LEVÝ VINKL!, 🚀 POD BŘEVNO!)
       if (isAiming || isSelected) {
-        ctx.font = isSelected ? 'bold 11px sans-serif' : '9px sans-serif';
-        ctx.fillStyle = t.color;
+        const badgeText = p.label;
+        ctx.font = isSelected ? 'bold 12px sans-serif' : 'bold 10px sans-serif';
+        const textW = ctx.measureText(badgeText).width;
+        const labelY = p.y < this.goal.y - 60 ? p.y + radius + 14 : p.y - radius - 14;
+
+        if (isSelected) {
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+          ctx.beginPath();
+          ctx.roundRect(p.x - textW / 2 - 8, labelY - 11, textW + 16, 22, 11);
+          ctx.fill();
+          ctx.strokeStyle = p.badgeColor;
+          ctx.lineWidth = 1.8;
+          ctx.stroke();
+        }
+
+        ctx.fillStyle = p.badgeColor;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        const labelY = t.y < yTop + 40 ? t.y + 16 : t.y - 16;
-        ctx.fillText(t.label, t.x, labelY);
+        ctx.fillText(badgeText, p.x, labelY);
       }
 
       ctx.restore();

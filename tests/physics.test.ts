@@ -1,5 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { analyzeGesture, analyzeDrawnPath, checkGoalCollision, updateBallPhysics, partitionStroke, calculateShotVelocity } from '../src/game/physics';
+import {
+  analyzeGesture,
+  analyzeDrawnPath,
+  checkGoalCollision,
+  updateBallPhysics,
+  partitionStroke,
+  calculateShotVelocity,
+  getGoalTargetPockets,
+  AIM_OFFSET_Y,
+  SNAP_ENTER_RADIUS,
+  SNAP_HOLD_RADIUS,
+} from '../src/game/physics';
 import { GoalkeeperAI } from '../src/game/goalkeeper';
 import { TouchPoint, Ball, GoalDimensions } from '../src/game/types';
 
@@ -207,6 +218,43 @@ describe('Florbalová fyzika & Detekce triků', () => {
     });
   });
 
+  describe('getGoalTargetPockets()', () => {
+    it('definuje 5 magnetických kapes s odpovídajícími souřadnicemi a popisky', () => {
+      const pockets = getGoalTargetPockets(goal);
+      expect(pockets.length).toBe(5);
+
+      const ids = pockets.map((p) => p.id);
+      expect(ids).toContain('vinkl_left');
+      expect(ids).toContain('bar');
+      expect(ids).toContain('vinkl_right');
+      expect(ids).toContain('post_left');
+      expect(ids).toContain('post_right');
+
+      const vinklLeft = pockets.find((p) => p.id === 'vinkl_left')!;
+      expect(vinklLeft.label).toBe('⭐ LEVÝ VINKL!');
+      expect(vinklLeft.z).toBeGreaterThan(110);
+      expect(vinklLeft.x).toBeLessThan(goal.x - 50);
+
+      const bar = pockets.find((p) => p.id === 'bar')!;
+      expect(bar.label).toBe('🚀 POD BŘEVNO!');
+      expect(bar.z).toBeGreaterThan(120);
+      expect(bar.x).toBe(goal.x);
+
+      const vinklRight = pockets.find((p) => p.id === 'vinkl_right')!;
+      expect(vinklRight.label).toBe('⭐ PRAVÝ VINKL!');
+      expect(vinklRight.z).toBeGreaterThan(110);
+      expect(vinklRight.x).toBeGreaterThan(goal.x + 50);
+
+      const postLeft = pockets.find((p) => p.id === 'post_left')!;
+      expect(postLeft.label).toBe('⚡ K LEVÉ TYČI!');
+      expect(postLeft.z).toBeLessThanOrEqual(25);
+
+      const postRight = pockets.find((p) => p.id === 'post_right')!;
+      expect(postRight.label).toBe('⚡ K PRAVÉ TYČI!');
+      expect(postRight.z).toBeLessThanOrEqual(25);
+    });
+  });
+
   describe('partitionStroke()', () => {
     it('vrátí výchozí hodnoty pro prázdné pole', () => {
       const res = partitionStroke([], goal);
@@ -215,13 +263,13 @@ describe('Florbalová fyzika & Detekce triků', () => {
       expect(res.shotTarget.label).toContain('STŘELA');
     });
 
-    it('rozdělí tah na trasu běhu (y >= 285) a cíl v levém vinklu', () => {
+    it('rozdělí tah na trasu běhu (y >= 285) a cíl v levém vinklu s offsetem 55 px nad prstem', () => {
       const points = [
         { x: 270, y: 780 },
         { x: 230, y: 550 },
         { x: 200, y: 350 },
         { x: 190, y: 290 },
-        { x: 180, y: 100 }, // cíl v levém vinklu (x vlevo, y vysoko v síti)
+        { x: 180, y: 163 }, // prst je na 163 px, mířidlo 55 px nad ním je na 108 px (přesně v levém vinklu!)
       ];
       const res = partitionStroke(points, goal);
 
@@ -234,7 +282,7 @@ describe('Florbalová fyzika & Detekce triků', () => {
       // Cíl v brance odpovídá levému vinklu
       expect(res.shotTarget.x).toBeLessThan(goal.x - 35);
       expect(res.shotTarget.z).toBeGreaterThan(80);
-      expect(res.shotTarget.label).toBe('LEVÝ VINKL! ⭐');
+      expect(res.shotTarget.label).toBe('⭐ LEVÝ VINKL!');
     });
 
     it('rozdělí tah s cílem v pravém vinklu', () => {
@@ -247,7 +295,7 @@ describe('Florbalová fyzika & Detekce triků', () => {
       const res = partitionStroke(points, goal);
       expect(res.shotTarget.x).toBeGreaterThan(goal.x + 35);
       expect(res.shotTarget.z).toBeGreaterThan(80);
-      expect(res.shotTarget.label).toBe('PRAVÝ VINKL! ⭐');
+      expect(res.shotTarget.label).toBe('⭐ PRAVÝ VINKL!');
     });
 
     it('detekuje střelu po zemi k tyči', () => {
@@ -259,7 +307,7 @@ describe('Florbalová fyzika & Detekce triků', () => {
       const res = partitionStroke(points, goal);
       expect(res.shotTarget.x).toBeLessThan(goal.x - 35);
       expect(res.shotTarget.z).toBeLessThanOrEqual(40);
-      expect(res.shotTarget.label).toContain('K LEVÉ TYČI');
+      expect(res.shotTarget.label).toBe('⚡ K LEVÉ TYČI!');
     });
 
     it('rozdělí tah s cílem pod břevno (střed horní části branky)', () => {
@@ -272,7 +320,39 @@ describe('Florbalová fyzika & Detekce triků', () => {
       const res = partitionStroke(points, goal);
       expect(res.shotTarget.x).toBe(goal.x);
       expect(res.shotTarget.z).toBeGreaterThan(100);
-      expect(res.shotTarget.label).toBe('POD BŘEVNO! 🚀');
+      expect(res.shotTarget.label).toBe('🚀 POD BŘEVNO!');
+    });
+
+    it('udrží magnetický zámek díky hysterezi (SNAP_HOLD_RADIUS > SNAP_ENTER_RADIUS)', () => {
+      expect(SNAP_HOLD_RADIUS).toBeGreaterThan(SNAP_ENTER_RADIUS);
+      expect(AIM_OFFSET_Y).toBe(55);
+
+      const pockets = getGoalTargetPockets(goal);
+      const vinklLeft = pockets.find((p) => p.id === 'vinkl_left')!;
+
+      // Bod s odchylkou 60 px směrem ven od vinklu (mimo SNAP_ENTER_RADIUS 54 px, ale uvnitř SNAP_HOLD_RADIUS 76 px)
+      // Mířidlo aimPos = (x, y - AIM_OFFSET_Y)
+      const aimTargetX = vinklLeft.x - 60;
+      const aimTargetY = vinklLeft.y;
+      const fingerPoints = [
+        { x: 270, y: 780 },
+        { x: aimTargetX, y: aimTargetY + AIM_OFFSET_Y },
+      ];
+
+      // 1. Bez předchozího zámku -> nesepne se levý vinkl (odchylka 60 > SNAP_ENTER_RADIUS 54)
+      const resWithoutLock = partitionStroke(fingerPoints, goal, null);
+      expect(resWithoutLock.shotTarget.label).not.toBe(vinklLeft.label);
+
+      // 2. S existujícím zámkem na levý vinkl -> hystereze (SNAP_HOLD_RADIUS 76) zámek spolehlivě udrží
+      const lockedTarget = {
+        x: vinklLeft.x,
+        y: vinklLeft.y,
+        z: vinklLeft.z,
+        label: vinklLeft.label,
+        badgeColor: vinklLeft.badgeColor,
+      };
+      const resWithLock = partitionStroke(fingerPoints, goal, lockedTarget);
+      expect(resWithLock.shotTarget.label).toBe('⭐ LEVÝ VINKL!');
     });
 
     it('promítne směr střely do branky, pokud tah skončí na palubovce', () => {

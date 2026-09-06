@@ -318,6 +318,30 @@ class SoundManager {
     });
   }
 
+  /** Zvuk magnetického uzamčení kapsy v brance (krátký uspokojivý klik) */
+  public playAimSnap() {
+    if (this.isMuted) return;
+    this.init();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, t);
+    osc.frequency.exponentialRampToValueAtTime(1320, t + 0.04);
+
+    gain.gain.setValueAtTime(0.25, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(t);
+    osc.stop(t + 0.05);
+  }
+
   private playNoiseClick(duration: number, volume: number) {
     if (!this.ctx) return;
     const count = Math.floor(this.ctx.sampleRate * duration);
