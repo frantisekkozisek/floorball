@@ -53,7 +53,7 @@ Tlačítkem **🧤 Junior / Profi / Legenda** můžete kdykoliv zvolit obtížno
 
 - **2.5D Canvas Engine:** Bleskový start bez zpoždění, stabilní 60 FPS na každém telefonu.
 - **Čistá velikost (Bundle):** Pouze ~8 kB gzipped bez zbytečných těžkých knihoven.
-- **Web Audio API syntetizér:** 100% offline zvuky (klepnutí florbalky, siréna, píšťalka, tyčka, jásot publika) – žádné stahování externích MP3.
+- **Web Audio API syntetizér:** 100% offline procedurální zvuky (klepnutí florbalky o děravý míček, náraz do sítě, mohutná halová siréna s low-pass rezonancí, vítězné zvonky, píšťalka, cinknutí tyčky, bouřlivý jásot diváků) – žádné stahování externích MP3.
 - **Dotyková podpora:** Zákaz nechtěného zoomování na iOS/Androidu (`touch-action: none`, `viewport-fit=cover`).
 
 ---
