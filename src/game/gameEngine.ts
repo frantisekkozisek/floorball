@@ -1,4 +1,4 @@
-import { Ball, GameScore, GameMode, GoalDimensions, TouchPoint, TrickType, ShotTarget } from './types';
+import { Ball, GameScore, GameMode, GoalDimensions, TouchPoint, TrickType, ShotTarget, GoalieLevel, GoalieConfig } from './types';
 import { analyzeGesture, analyzeDrawnPath, checkGoalCollision, updateBallPhysics, partitionStroke, calculateShotVelocity } from './physics';
 import { GoalkeeperAI } from './goalkeeper';
 import { ParticleSystem } from './particles';
@@ -132,6 +132,27 @@ export class GameEngine {
     this.resetBall();
     this.showBanner('1. NÁJEZD!', 'Nakresli prstem trasu k brance!', '#00ffcc', 1.8);
     soundManager.playWhistle();
+  }
+
+  public cycleGoalieLevel(): GoalieLevel {
+    const nextLevel = this.goalieAI.getNextLevel();
+    this.goalieAI.setLevel(nextLevel);
+    this.showBanner(
+      `BRANKÁŘ: ${this.goalieAI.config.badge}`,
+      `Obtížnost: ${this.goalieAI.config.name}`,
+      '#ffe600',
+      1.8
+    );
+    soundManager.playLevelUp();
+    return nextLevel;
+  }
+
+  public getGoalieLevel(): GoalieLevel {
+    return this.goalieAI.level;
+  }
+
+  public getGoalieConfig(): GoalieConfig {
+    return this.goalieAI.config;
   }
 
   public startTutorial() {
@@ -897,8 +918,8 @@ export class GameEngine {
     ctx.fillRect(-30 + leftPadOffset, -6, 20, 5);
     ctx.fillRect(10 + rightPadOffset, -6, 20, 5);
 
-    // Brankářský dres (vysoká viditelnost - neonově oranžová)
-    ctx.fillStyle = '#ff6b00';
+    // Brankářský dres (dle zvolené obtížnosti)
+    ctx.fillStyle = this.goalieAI.config.jerseyColor;
     ctx.beginPath();
     ctx.roundRect(-26, -55, 52, 42, [8, 8, 4, 4]);
     ctx.fill();
@@ -930,8 +951,8 @@ export class GameEngine {
     ctx.arc(32 + armReachRight, -20 - armTilt, 9, 0, Math.PI * 2);
     ctx.fill();
 
-    // Brankářská maska s mřížkou
-    ctx.fillStyle = '#05d9e8';
+    // Brankářská maska s mřížkou (barva dle obtížnosti)
+    ctx.fillStyle = this.goalieAI.config.maskColor;
     ctx.beginPath();
     ctx.arc(0, -68, 16, 0, Math.PI * 2);
     ctx.fill();
@@ -946,6 +967,20 @@ export class GameEngine {
     ctx.moveTo(0, -72);
     ctx.lineTo(0, -60);
     ctx.stroke();
+
+    // Zobrazení štítku obtížnosti brankáře nad hlavou
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.8)';
+    ctx.beginPath();
+    ctx.roundRect(-46, -104, 92, 20, 10);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(this.goalieAI.config.badge, 0, -90);
 
     ctx.restore();
   }
@@ -1127,13 +1162,20 @@ export class GameEngine {
       ctx.stroke();
 
       ctx.fillStyle = '#f8fafc';
-      ctx.font = 'bold 18px sans-serif';
+      ctx.font = 'bold 16px sans-serif';
       ctx.textAlign = 'left';
-      ctx.fillText(`NÁJEZD ${this.score.currentShot} / ${this.score.maxShots}`, 40, 52);
+      ctx.fillText(`NÁJEZD ${this.score.currentShot}/${this.score.maxShots}`, 36, 52);
+
+      // Zobrazení úrovně brankáře uprostřed horního panelu
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#ffe600';
+      ctx.font = 'bold 15px sans-serif';
+      ctx.fillText(this.goalieAI.config.badge, this.V_WIDTH / 2, 52);
 
       ctx.textAlign = 'right';
       ctx.fillStyle = '#00ffcc';
-      ctx.fillText(`GÓLY: ${this.score.goals}`, this.V_WIDTH - 40, 52);
+      ctx.font = 'bold 16px sans-serif';
+      ctx.fillText(`GÓLY: ${this.score.goals}`, this.V_WIDTH - 36, 52);
     } else if (this.mode === 'tutorial') {
       const step = this.tutorial.getCurrentStep();
       if (step) {
@@ -1215,20 +1257,24 @@ export class GameEngine {
 
     ctx.fillStyle = '#ffffff';
     ctx.font = '22px sans-serif';
-    ctx.fillText(`Vstřelené góly: ${this.score.goals} z ${this.score.maxShots}`, this.V_WIDTH / 2, 340);
+    ctx.fillText(`Vstřelené góly: ${this.score.goals} z ${this.score.maxShots}`, this.V_WIDTH / 2, 335);
+
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '16px sans-serif';
+    ctx.fillText(`Brankář: ${this.goalieAI.config.badge} (${this.goalieAI.config.name})`, this.V_WIDTH / 2, 368);
 
     // Zlaté hvězdy
     const stars = this.score.goals >= 4 ? 3 : (this.score.goals >= 2 ? 2 : 1);
-    ctx.font = '50px sans-serif';
+    ctx.font = '48px sans-serif';
     const starText = '⭐'.repeat(stars);
-    ctx.fillText(starText, this.V_WIDTH / 2, 420);
+    ctx.fillText(starText, this.V_WIDTH / 2, 430);
 
     let cheerMsg = 'Výborný trénink!';
     if (this.score.goals === 5) cheerMsg = 'NEUVĚŘITELNÉ! Čisté konto pro Julinku! 🏆';
     else if (this.score.goals >= 3) cheerMsg = 'Fantastický výkon florbalové hvězdy! 🥇';
     ctx.font = 'bold 18px sans-serif';
     ctx.fillStyle = '#00ffcc';
-    ctx.fillText(cheerMsg, this.V_WIDTH / 2, 480);
+    ctx.fillText(cheerMsg, this.V_WIDTH / 2, 485);
 
     // Tlačítko Hrát znovu
     ctx.fillStyle = '#ff2a6d';

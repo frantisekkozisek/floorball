@@ -219,6 +219,33 @@ class SoundManager {
     osc.stop(t + 0.26);
   }
 
+  /** Zvuk přepnutí úrovně brankáře (vzestupný akord) */
+  public playLevelUp() {
+    if (this.isMuted) return;
+    this.init();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+    const notes = [523.25, 659.25, 783.99]; // C5, E5, G5
+    notes.forEach((freq, idx) => {
+      const osc = this.ctx!.createOscillator();
+      const gain = this.ctx!.createGain();
+      const startTime = t + idx * 0.07;
+
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, startTime);
+
+      gain.gain.setValueAtTime(0.35, startTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.18);
+
+      osc.connect(gain);
+      gain.connect(this.ctx!.destination);
+
+      osc.start(startTime);
+      osc.stop(startTime + 0.2);
+    });
+  }
+
   private playNoiseClick(duration: number, volume: number) {
     if (!this.ctx) return;
     const count = Math.floor(this.ctx.sampleRate * duration);

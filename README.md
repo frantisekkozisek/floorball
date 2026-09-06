@@ -28,9 +28,24 @@ Julinka se krok za krokem s pomocí animovaného prstíku naučí provádět:
 
 ### 2. Nájezdový zápas (Shootout)
 - 5 samostatných nájezdů proti brankáři.
-- AI brankáře reaguje na kličky a stahovačky (nechá se oklamat do protipohybu).
 - Zvukové cinknutí tyčky, branková siréna a konfety při gólu.
-- Závěrečné vyhodnocení, zlaté hvězdy (⭐) a možnost okamžité odvety.
+- Závěrečné vyhodnocení s počtem vstřelených branek, zlaté hvězdy (⭐), zobrazení obtížnosti a možnost okamžité odvety.
+
+### 3. 🧤 3 Úrovně brankáře (Přepínatelné tlačítkem v horní liště)
+Tlačítkem **🧤 Junior / Profi / Legenda** můžete kdykoliv zvolit obtížnost brankáře:
+1. **🟢 Junior (Začátečník):**
+   - Zelený dres `#10b981`, světle zelená maska.
+   - Pomalé vykrývání úhlu (230 px/s), pomalejší skok (440 px/s), delší reakční doba (100 ms).
+   - Menší dosah rukavic a betonů (46 px, výška do 60 px).
+   - Velmi snadno skočí na stahovačku (zpoždění 280 ms). Skvělé pro začátek a procvičení střel!
+2. **🟡 Profi (Ligový brankář):**
+   - Zářivě oranžový dres `#ff6b00`, tyrkysová maska `#05d9e8`.
+   - Vyvážený ligový brankář: rychlý přesun po kolenou (340 px/s), skok k tyči (660 px/s), reakční doba 35 ms.
+   - Chytá rány do výšky 68 px a šířky 56 px, vyžaduje přesné míření do šibenice nebo stahovačku do protipohybu.
+3. **🔴 Legenda (Zeď v brance):**
+   - Fialový dres `#8b5cf6`, zlatá maska `#ffe600`.
+   - Elitní gólman: bleskový přesun (440 px/s), extrémní skok (780 px/s), reakční doba 15 ms.
+   - Velký dosah (62 px do šířky, 74 px do výšky), minimální reakční zpoždění na fintu (90 ms). Pro gól je nutná perfektní trajektorie přímo pod břevno nebo precizní Zorro trik!
 
 ---
 

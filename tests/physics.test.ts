@@ -391,5 +391,86 @@ describe('Florbalová fyzika & Detekce triků', () => {
       // Klečící brankář na z = 95 nedosáhne
       expect(ai.checkSave(ball)).toBe(false);
     });
+
+    describe('3 Úrovně obtížnosti brankáře (Junior, Profi, Legenda)', () => {
+      it('správně cykluje mezi úrovněmi junior -> profi -> legend -> junior', () => {
+        const ai = new GoalkeeperAI(goal, 'junior');
+        expect(ai.level).toBe('junior');
+        expect(ai.config.badge).toContain('Junior');
+
+        expect(ai.getNextLevel()).toBe('profi');
+        ai.setLevel('profi');
+        expect(ai.level).toBe('profi');
+        expect(ai.config.badge).toContain('Profi');
+
+        expect(ai.getNextLevel()).toBe('legend');
+        ai.setLevel('legend');
+        expect(ai.level).toBe('legend');
+        expect(ai.config.badge).toContain('Legenda');
+
+        expect(ai.getNextLevel()).toBe('junior');
+        ai.setLevel('junior');
+        expect(ai.level).toBe('junior');
+      });
+
+      it('Junior pustí střelu, kterou Profi a Legenda chytí', () => {
+        const juniorAi = new GoalkeeperAI(goal, 'junior');
+        const profiAi = new GoalkeeperAI(goal, 'profi');
+        const legendAi = new GoalkeeperAI(goal, 'legend');
+
+        // Míček míří do vzdálenosti dx = 50 a výšky z = 64
+        // Junior má sideReach=46 a maxHeightReach=60 -> nechytí
+        // Profi má sideReach=56 a maxHeightReach=68 -> chytí
+        // Legenda má sideReach=62 a maxHeightReach=74 -> chytí
+        const ball: Ball = {
+          x: goal.x + 50,
+          y: juniorAi.goalie.y + 5,
+          z: 64,
+          vx: 0,
+          vy: -600,
+          vz: 0,
+          radius: 12,
+          rotation: 0,
+          isMoving: true,
+          trail: [],
+        };
+
+        expect(juniorAi.checkSave(ball)).toBe(false);
+        expect(profiAi.checkSave(ball)).toBe(true);
+        expect(legendAi.checkSave(ball)).toBe(true);
+      });
+
+      it('Profi pustí extrémní střelu k tyči, kterou chytí pouze Legenda (Zeď)', () => {
+        const profiAi = new GoalkeeperAI(goal, 'profi');
+        const legendAi = new GoalkeeperAI(goal, 'legend');
+
+        // Míček míří do vzdálenosti dx = 60 a výšky z = 70
+        // Profi: sideReach=56 -> nechytí
+        // Legenda: sideReach=62, maxHeightReach=74 -> chytí
+        const ball: Ball = {
+          x: goal.x + 60,
+          y: profiAi.goalie.y + 5,
+          z: 70,
+          vx: 0,
+          vy: -600,
+          vz: 0,
+          radius: 12,
+          rotation: 0,
+          isMoving: true,
+          trail: [],
+        };
+
+        expect(profiAi.checkSave(ball)).toBe(false);
+        expect(legendAi.checkSave(ball)).toBe(true);
+      });
+
+      it('Junior se nechá oklamat stahovačkou na mnohem delší dobu než Legenda', () => {
+        const juniorAi = new GoalkeeperAI(goal, 'junior');
+        const legendAi = new GoalkeeperAI(goal, 'legend');
+
+        expect(juniorAi.config.deceptionDelay).toBeGreaterThan(legendAi.config.deceptionDelay * 2.5);
+        expect(juniorAi.config.reactionTime).toBeGreaterThan(legendAi.config.reactionTime * 5);
+      });
+    });
   });
 });

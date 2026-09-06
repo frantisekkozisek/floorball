@@ -1,7 +1,55 @@
-import { Goalkeeper, Ball, TrickType, GoalDimensions } from './types';
+import { Goalkeeper, Ball, TrickType, GoalDimensions, GoalieLevel, GoalieConfig } from './types';
+
+export const GOALIE_CONFIGS: Record<GoalieLevel, GoalieConfig> = {
+  junior: {
+    id: 'junior',
+    name: 'Začátečník',
+    badge: '🟢 Junior',
+    reactionTime: 0.10, // 100ms
+    trackingSpeed: 230, // px/s
+    diveSpeed: 440, // px/s
+    bodyReach: 20, // px
+    sideReach: 46, // px
+    maxHeightReach: 60, // px
+    deceptionDelay: 0.28, // 280ms
+    jerseyColor: '#10b981', // zelený dres
+    maskColor: '#34d399', // světle zelená maska
+  },
+  profi: {
+    id: 'profi',
+    name: 'Ligový brankář',
+    badge: '🟡 Profi',
+    reactionTime: 0.035, // 35ms
+    trackingSpeed: 340, // px/s
+    diveSpeed: 660, // px/s
+    bodyReach: 24, // px
+    sideReach: 56, // px
+    maxHeightReach: 68, // px
+    deceptionDelay: 0.16, // 160ms
+    jerseyColor: '#ff6b00', // neonově oranžový dres
+    maskColor: '#05d9e8', // tyrkysová maska
+  },
+  legend: {
+    id: 'legend',
+    name: 'Legenda (Zeď)',
+    badge: '🔴 Legenda',
+    reactionTime: 0.015, // 15ms
+    trackingSpeed: 440, // px/s
+    diveSpeed: 780, // px/s
+    bodyReach: 27, // px
+    sideReach: 62, // px
+    maxHeightReach: 74, // px
+    deceptionDelay: 0.09, // 90ms
+    jerseyColor: '#8b5cf6', // fialový dres
+    maskColor: '#ffe600', // zlatá maska
+  },
+};
 
 export class GoalkeeperAI {
   public goalie: Goalkeeper;
+  public config: GoalieConfig;
+  public level: GoalieLevel = 'profi';
+
   private goal: GoalDimensions;
   private reactionDelayTimer: number = 0;
   private fakeDeceptionTimer: number = 0;
@@ -9,8 +57,10 @@ export class GoalkeeperAI {
   private targetGoalX: number;
   private baseCreaseY: number;
 
-  constructor(goal: GoalDimensions) {
+  constructor(goal: GoalDimensions, initialLevel: GoalieLevel = 'profi') {
     this.goal = goal;
+    this.level = initialLevel;
+    this.config = GOALIE_CONFIGS[initialLevel];
     this.baseCreaseY = goal.y + 26; // V brankovišti těsně před brankovou čárou
     this.targetGoalX = goal.x;
     this.goalie = {
@@ -23,6 +73,17 @@ export class GoalkeeperAI {
       state: 'ready',
       saveReactionTimer: 0,
     };
+  }
+
+  public setLevel(level: GoalieLevel) {
+    this.level = level;
+    this.config = GOALIE_CONFIGS[level];
+  }
+
+  public getNextLevel(): GoalieLevel {
+    if (this.level === 'junior') return 'profi';
+    if (this.level === 'profi') return 'legend';
+    return 'junior';
   }
 
   public reset() {
@@ -50,19 +111,19 @@ export class GoalkeeperAI {
         this.goal.x - this.goal.width * 0.4,
         Math.min(this.goal.x + this.goal.width * 0.4, this.goal.x + deceptionOffset)
       );
-      this.fakeDeceptionTimer = 0.16; // 160ms skáče na opačnou stranu
+      this.fakeDeceptionTimer = this.config.deceptionDelay;
       this.reactionDelayTimer = 0;
-      this.diveSpeed = 620;
+      this.diveSpeed = this.config.diveSpeed * 0.95;
     } else if (trickType === 'zorro') {
       // Zorro trik: míček stoupá do výšky v oblouku, brankář má zpoždění
-      this.reactionDelayTimer = 0.08;
+      this.reactionDelayTimer = this.config.reactionTime * 2.2;
       this.goalie.targetX = estimatedTargetX;
-      this.diveSpeed = 580;
+      this.diveSpeed = this.config.diveSpeed * 0.9;
     } else {
       // Normální prudká střela: blesková reakce a prudký skok k tyči
-      this.reactionDelayTimer = 0.03;
+      this.reactionDelayTimer = this.config.reactionTime;
       this.goalie.targetX = estimatedTargetX;
-      this.diveSpeed = 680;
+      this.diveSpeed = this.config.diveSpeed;
     }
   }
 
@@ -76,7 +137,7 @@ export class GoalkeeperAI {
       if (this.fakeDeceptionTimer <= 0) {
         // Po odeznění finty se brankář snaží vrátit k letícímu míčku
         this.goalie.targetX = this.targetGoalX;
-        this.diveSpeed = 620;
+        this.diveSpeed = this.config.diveSpeed * 0.95;
       }
     }
 
@@ -94,7 +155,7 @@ export class GoalkeeperAI {
         );
 
         const dx = clampedTarget - this.goalie.x;
-        const currentSpeed = this.diveSpeed || 640;
+        const currentSpeed = this.diveSpeed || this.config.diveSpeed;
 
         if (Math.abs(dx) > 3) {
           this.goalie.vx = Math.sign(dx) * Math.min(currentSpeed, Math.abs(dx) * 14);
@@ -114,7 +175,7 @@ export class GoalkeeperAI {
       );
 
       const dx = angleTarget - this.goalie.x;
-      const trackingSpeed = 340; // Rychlý přesun po kolenou
+      const trackingSpeed = this.config.trackingSpeed; // Přesun po kolenou
 
       if (Math.abs(dx) > 2) {
         this.goalie.vx = Math.sign(dx) * Math.min(trackingSpeed, Math.abs(dx) * 8);
@@ -127,7 +188,8 @@ export class GoalkeeperAI {
 
       // Brankář povystoupí proti blížícímu se střelci (vykrytí úhlu)
       const distFromGoal = Math.max(0, Math.min(1, (780 - ball.y) / 500));
-      this.goalie.y = this.baseCreaseY + distFromGoal * 14;
+      const forwardStep = this.level === 'legend' ? 18 : (this.level === 'profi' ? 14 : 10);
+      this.goalie.y = this.baseCreaseY + distFromGoal * forwardStep;
     }
   }
 
@@ -143,20 +205,16 @@ export class GoalkeeperAI {
 
     const dx = Math.abs(ball.x - this.goalie.x);
 
-    // 1. Zásah středem těla / klečící postavy (dx <= 24px)
+    // 1. Zásah středem těla / klečící postavy
     // Brankář tělem a maskou pokryje výšku až do z = 85
-    if (dx <= 24 && ball.z <= 85) {
+    if (dx <= this.config.bodyReach && ball.z <= 85) {
       this.goalie.state = 'beaten';
       return true;
     }
 
-    // 2. Boční zákrok nataženou rukou nebo betonem/nohou při skoku (dx <= 58px)
-    // Florbalový brankář v kleče dosáhne rukavicí/betonem do výšky cca z = 68
-    // Pokud střela míří výše (vinkl z >= 80), brankář na ni v kleče nedosáhne!
-    const sideReach = 58;
-    const sideMaxHeight = 68;
-
-    if (dx <= sideReach && ball.z <= sideMaxHeight) {
+    // 2. Boční zákrok nataženou rukou nebo betonem/nohou při skoku
+    // Pokud střela míří výše než dosah brankáře, brankář na ni v kleče nedosáhne!
+    if (dx <= this.config.sideReach && ball.z <= this.config.maxHeightReach) {
       this.goalie.state = 'beaten';
       return true;
     }

@@ -4,12 +4,20 @@ import { soundManager } from './audio/soundEffects';
 
 const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
 const soundToggleBtn = document.getElementById('btn-sound-toggle') as HTMLButtonElement;
+const goalieLevelBtn = document.getElementById('btn-goalie-level') as HTMLButtonElement;
 const switchModeBtn = document.getElementById('btn-switch-mode') as HTMLButtonElement;
 const tipBanner = document.getElementById('tip-banner') as HTMLDivElement;
 
 const game = new GameEngine(canvas);
 switchModeBtn.innerText = '🎓 Trénink triků';
 tipBanner.innerText = '✏️ Nakresli trasu k brance a Julinka po ní vyrazí!';
+
+const updateGoalieButtonLabel = () => {
+  if (!goalieLevelBtn) return;
+  const cfg = game.getGoalieConfig();
+  goalieLevelBtn.innerText = `🧤 ${cfg.badge}`;
+};
+updateGoalieButtonLabel();
 
 // Správa zvuku s ochranou proti dvojkliku (pointerdown + click)
 let lastSoundTime = 0;
@@ -24,10 +32,30 @@ const handleSoundToggle = (e?: Event) => {
 
   soundManager.ensureAudio();
   soundManager.isMuted = !soundManager.isMuted;
-  soundToggleBtn.innerText = soundManager.isMuted ? '🔇 Zvuk VYPNUT' : '🔊 Zvuk ZAPNUT';
+  soundToggleBtn.innerText = soundManager.isMuted ? '🔇 Zvuk VYPNUT' : '🔊 Zvuk';
 };
 soundToggleBtn.addEventListener('pointerdown', handleSoundToggle);
 soundToggleBtn.addEventListener('click', handleSoundToggle);
+
+// Přepínání obtížnosti brankáře (Junior / Profi / Legenda)
+let lastGoalieLevelTime = 0;
+const handleGoalieLevelToggle = (e?: Event) => {
+  if (e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+  const now = performance.now();
+  if (now - lastGoalieLevelTime < 350) return;
+  lastGoalieLevelTime = now;
+
+  soundManager.ensureAudio();
+  game.cycleGoalieLevel();
+  updateGoalieButtonLabel();
+};
+if (goalieLevelBtn) {
+  goalieLevelBtn.addEventListener('pointerdown', handleGoalieLevelToggle);
+  goalieLevelBtn.addEventListener('click', handleGoalieLevelToggle);
+}
 
 // Přepínání mezi Akademií (tutoriálem) a Ostrými nájezdy / Nová hra
 let lastSwitchTime = 0;

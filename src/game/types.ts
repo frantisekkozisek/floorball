@@ -44,6 +44,23 @@ export interface Ball {
   trail: { x: number; y: number; alpha: number }[];
 }
 
+export type GoalieLevel = 'junior' | 'profi' | 'legend';
+
+export interface GoalieConfig {
+  id: GoalieLevel;
+  name: string;
+  badge: string;
+  reactionTime: number; // in seconds
+  trackingSpeed: number; // px/s
+  diveSpeed: number; // px/s
+  bodyReach: number; // px
+  sideReach: number; // px
+  maxHeightReach: number; // px
+  deceptionDelay: number; // seconds fooled by toe-drag
+  jerseyColor: string;
+  maskColor: string;
+}
+
 export interface Goalkeeper {
   x: number;
   y: number;
