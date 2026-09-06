@@ -1,16 +1,148 @@
 import './style.css';
 import { GameEngine } from './game/gameEngine';
 import { soundManager } from './audio/soundEffects';
+import { JERSEY_COLORS } from './game/scoring';
 
 const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
 const soundToggleBtn = document.getElementById('btn-sound-toggle') as HTMLButtonElement;
 const goalieLevelBtn = document.getElementById('btn-goalie-level') as HTMLButtonElement;
 const switchModeBtn = document.getElementById('btn-switch-mode') as HTMLButtonElement;
 const tipBanner = document.getElementById('tip-banner') as HTMLDivElement;
+const playerCustomBtn = document.getElementById('btn-player-custom') as HTMLButtonElement;
+
+// Prvky modálního okna pro úpravu hráče
+const playerModal = document.getElementById('player-modal') as HTMLDivElement;
+const modalBackdrop = document.getElementById('modal-backdrop') as HTMLDivElement;
+const closeModalBtn = document.getElementById('btn-close-modal') as HTMLButtonElement;
+const playerNameInput = document.getElementById('input-player-name') as HTMLInputElement;
+const playerNumberInput = document.getElementById('input-player-number') as HTMLInputElement;
+const numDecBtn = document.getElementById('btn-num-dec') as HTMLButtonElement;
+const numIncBtn = document.getElementById('btn-num-inc') as HTMLButtonElement;
+const colorSwatchesContainer = document.getElementById('color-swatches') as HTMLDivElement;
+const savePlayerBtn = document.getElementById('btn-save-player') as HTMLButtonElement;
+const previewJersey = document.getElementById('preview-jersey') as HTMLDivElement;
+const previewName = document.getElementById('preview-name') as HTMLDivElement;
+const previewNumber = document.getElementById('preview-number') as HTMLDivElement;
 
 const game = new GameEngine(canvas);
 switchModeBtn.innerText = '🎓 Trénink triků';
 tipBanner.innerText = '🎯 Pro vinkl ⭐ nebo břevno 🚀 táhni prstem až do branky!';
+
+// Aktualizace tlačítka hráče
+const updatePlayerButton = () => {
+  if (!playerCustomBtn) return;
+  const cfg = game.getPlayerConfig();
+  playerCustomBtn.innerText = `👕 ${cfg.name} #${cfg.number}`;
+  playerCustomBtn.style.borderColor = cfg.jerseyColor;
+};
+updatePlayerButton();
+
+// Správa modálního okna hráče
+let selectedJerseyColor = game.playerConfig.jerseyColor;
+
+const updateModalPreview = () => {
+  const nameVal = (playerNameInput.value || 'JULINKA').trim().slice(0, 10).toUpperCase();
+  const numVal = Math.max(1, Math.min(99, parseInt(playerNumberInput.value, 10) || 7));
+  if (previewName) previewName.innerText = nameVal;
+  if (previewNumber) previewNumber.innerText = numVal.toString();
+  if (previewJersey) previewJersey.style.backgroundColor = selectedJerseyColor;
+
+  // Zvýraznění aktivní barvy
+  if (colorSwatchesContainer) {
+    const swatches = colorSwatchesContainer.querySelectorAll('.color-swatch');
+    swatches.forEach(sw => {
+      const hex = sw.getAttribute('data-color');
+      if (hex === selectedJerseyColor) {
+        sw.classList.add('active');
+      } else {
+        sw.classList.remove('active');
+      }
+    });
+  }
+};
+
+// Vygenerování vzorníku barev dresů
+if (colorSwatchesContainer) {
+  colorSwatchesContainer.innerHTML = '';
+  JERSEY_COLORS.forEach(c => {
+    const swatch = document.createElement('div');
+    swatch.className = 'color-swatch';
+    swatch.style.backgroundColor = c.hex;
+    swatch.title = c.name;
+    swatch.setAttribute('data-color', c.hex);
+    swatch.addEventListener('click', () => {
+      selectedJerseyColor = c.hex;
+      updateModalPreview();
+    });
+    colorSwatchesContainer.appendChild(swatch);
+  });
+}
+
+const openPlayerModal = () => {
+  soundManager.ensureAudio();
+  const cfg = game.getPlayerConfig();
+  if (playerNameInput) playerNameInput.value = cfg.name;
+  if (playerNumberInput) playerNumberInput.value = cfg.number.toString();
+  selectedJerseyColor = cfg.jerseyColor;
+  updateModalPreview();
+  if (playerModal) playerModal.classList.remove('hidden');
+};
+
+const closePlayerModal = () => {
+  if (playerModal) playerModal.classList.add('hidden');
+};
+
+// Callback z canvasu na otevření modálu (např. z GameOver obrazovky)
+game.onOpenPlayerModal = () => openPlayerModal();
+
+if (playerCustomBtn) {
+  playerCustomBtn.addEventListener('click', openPlayerModal);
+}
+if (closeModalBtn) {
+  closeModalBtn.addEventListener('click', closePlayerModal);
+}
+if (modalBackdrop) {
+  modalBackdrop.addEventListener('click', closePlayerModal);
+}
+
+if (playerNameInput) {
+  playerNameInput.addEventListener('input', updateModalPreview);
+}
+if (playerNumberInput) {
+  playerNumberInput.addEventListener('input', updateModalPreview);
+}
+
+if (numDecBtn && playerNumberInput) {
+  numDecBtn.addEventListener('click', () => {
+    const current = parseInt(playerNumberInput.value, 10) || 7;
+    playerNumberInput.value = Math.max(1, current - 1).toString();
+    updateModalPreview();
+  });
+}
+
+if (numIncBtn && playerNumberInput) {
+  numIncBtn.addEventListener('click', () => {
+    const current = parseInt(playerNumberInput.value, 10) || 7;
+    playerNumberInput.value = Math.min(99, current + 1).toString();
+    updateModalPreview();
+  });
+}
+
+if (savePlayerBtn) {
+  savePlayerBtn.addEventListener('click', () => {
+    soundManager.ensureAudio();
+    const newName = (playerNameInput.value || 'JULINKA').trim().slice(0, 10).toUpperCase();
+    const newNum = Math.max(1, Math.min(99, parseInt(playerNumberInput.value, 10) || 7));
+    game.setPlayerConfig({
+      name: newName,
+      number: newNum,
+      jerseyColor: selectedJerseyColor,
+    });
+    updatePlayerButton();
+    closePlayerModal();
+    soundManager.playLevelUp();
+  });
+}
 
 const updateGoalieButtonLabel = () => {
   if (!goalieLevelBtn) return;

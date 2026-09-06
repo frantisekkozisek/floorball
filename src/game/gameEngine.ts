@@ -1,9 +1,10 @@
-import { Ball, GameScore, GameMode, GoalDimensions, TouchPoint, TrickType, ShotTarget, GoalieLevel, GoalieConfig } from './types';
+import { Ball, GameScore, GameMode, GoalDimensions, TouchPoint, TrickType, ShotTarget, GoalieLevel, GoalieConfig, PlayerConfig, LeaderboardEntry } from './types';
 import { analyzeGesture, analyzeDrawnPath, checkGoalCollision, updateBallPhysics, partitionStroke, calculateShotVelocity } from './physics';
 import { GoalkeeperAI } from './goalkeeper';
 import { ParticleSystem } from './particles';
 import { TutorialManager } from './tutorial';
 import { soundManager } from '../audio/soundEffects';
+import { loadPlayerConfig, savePlayerConfig, loadLeaderboard, addLeaderboardScore, calculateShotScore, getPlayerTitle } from './scoring';
 
 export class GameEngine {
   private canvas: HTMLCanvasElement;
@@ -19,6 +20,12 @@ export class GameEngine {
   private particles: ParticleSystem;
   public tutorial: TutorialManager;
 
+  // Konfigurace hráče (jméno, číslo, barva dresu) a Síň slávy
+  public playerConfig: PlayerConfig = loadPlayerConfig();
+  public leaderboard: LeaderboardEntry[] = loadLeaderboard();
+  public lastLeaderboardRank: number | null = null;
+  public onOpenPlayerModal?: () => void;
+
   public mode: GameMode = 'shootout';
   public score: GameScore = {
     shotsTotal: 0,
@@ -27,7 +34,16 @@ export class GameEngine {
     posts: 0,
     currentShot: 1,
     maxShots: 5,
+    points: 0,
+    combo: 0,
+    lastShotPoints: 0,
+    history: [],
   };
+
+  private strokeStartTime: number = 0;
+  private lastShotTrickType: TrickType = 'normal';
+  private lastShotTargetLabel: string = 'Gól do sítě';
+  private lastShotDuration: number = 1.5;
 
   // Kreslení trasy a běh hráčky po hřišti (Varianta 1)
   public drawnPath: { x: number; y: number }[] = [];
@@ -119,6 +135,19 @@ export class GameEngine {
     this.goalieAI.reset();
   }
 
+  public setPlayerConfig(config: Partial<PlayerConfig>) {
+    this.playerConfig = {
+      name: (config.name || this.playerConfig.name || 'JULINKA').trim().slice(0, 12).toUpperCase(),
+      number: Math.max(1, Math.min(99, Number(config.number) || 7)),
+      jerseyColor: config.jerseyColor || this.playerConfig.jerseyColor || '#ec4899',
+    };
+    savePlayerConfig(this.playerConfig);
+  }
+
+  public getPlayerConfig(): PlayerConfig {
+    return this.playerConfig;
+  }
+
   public startShootout() {
     this.mode = 'shootout';
     this.score = {
@@ -128,7 +157,12 @@ export class GameEngine {
       posts: 0,
       currentShot: 1,
       maxShots: 5,
+      points: 0,
+      combo: 0,
+      lastShotPoints: 0,
+      history: [],
     };
+    this.lastLeaderboardRank = null;
     this.resetBall();
     this.showBanner('1. NÁJEZD!', 'Nakresli prstem trasu k brance!', '#00ffcc', 1.8);
     soundManager.playWhistle();
@@ -181,6 +215,12 @@ export class GameEngine {
       if (this.mode === 'gameover') {
         this.isPointerDown = false;
         this.isDrawingPath = false;
+        // Kliknutí na tlačítko "UPRAVIT HRÁČE" (y: 660 - 720)
+        if (pos.y >= 660 && pos.y <= 720 && pos.x >= this.V_WIDTH / 2 - 140 && pos.x <= this.V_WIDTH / 2 + 140) {
+          this.onOpenPlayerModal?.();
+          return;
+        }
+        // Kliknutí na "HRÁT ZNOVU" nebo kdekoliv jinde
         this.startShootout();
         return;
       }
@@ -213,6 +253,7 @@ export class GameEngine {
       }
 
       this.isPointerDown = true;
+      this.strokeStartTime = performance.now();
       this.touchPoints = [{ x: pos.x, y: pos.y, time: performance.now() }];
 
       // Začátek kreslení trasy pro Julinku (POUZE když míček neletí, Julinka neběží a nečeká se na další nájezd)
@@ -403,6 +444,10 @@ export class GameEngine {
       };
     }
 
+    this.lastShotTrickType = shot.type;
+    this.lastShotTargetLabel = this.shotTarget ? this.shotTarget.label : (shot.type === 'toe-drag' ? '⚡ K TYČI!' : (shot.type === 'zorro' ? '⭐ VINKL!' : 'Gól do sítě'));
+    this.lastShotDuration = Math.max(0.5, (performance.now() - (this.strokeStartTime || performance.now())) / 1000);
+
     soundManager.playStickHit();
     this.stickAngle = 0.6; // prudký švih hokejkou
 
@@ -455,6 +500,10 @@ export class GameEngine {
 
   private triggerShotFromRun() {
     const trickType = analyzeDrawnPath(this.rawDrawnPoints.length > 0 ? this.rawDrawnPoints : this.drawnPath);
+    this.lastShotTrickType = trickType;
+    this.lastShotTargetLabel = this.shotTarget ? this.shotTarget.label : (trickType === 'toe-drag' ? '⚡ K TYČI!' : (trickType === 'zorro' ? '⭐ VINKL!' : 'Gól do sítě'));
+    this.lastShotDuration = Math.max(0.5, (performance.now() - (this.strokeStartTime || performance.now())) / 1000);
+
     soundManager.playStickHit();
     this.stickAngle = 0.7; // plný švih hokejkou
 
@@ -627,14 +676,35 @@ export class GameEngine {
     if (this.mode === 'shootout') {
       if (result === 'goal') {
         this.score.goals++;
-        this.showBanner('GÓÓÓL!', 'Nádherná trefa, Julinko!', '#ffe600', 2.0);
+        const breakdown = calculateShotScore({
+          targetLabel: this.lastShotTargetLabel,
+          trickType: this.lastShotTrickType,
+          durationSeconds: this.lastShotDuration,
+          comboStreak: this.score.combo,
+          goalieLevel: this.goalieAI.config.id,
+        });
+        this.score.points += breakdown.totalPoints;
+        this.score.lastShotPoints = breakdown.totalPoints;
+        this.score.combo++;
+        this.score.history.push(breakdown);
+
+        const comboTxt = this.score.combo > 1 ? ` 🔥 ${this.score.combo}x KOMBO!` : '';
+        this.showBanner(
+          `GÓÓÓL! +${breakdown.totalPoints.toLocaleString('cs-CZ')} b.`,
+          `${breakdown.shotDescription}${comboTxt}`,
+          '#ffe600',
+          2.2
+        );
       } else if (result === 'post') {
         this.score.posts++;
+        this.score.combo = 0;
         this.showBanner('CINK! TYČKA!', 'Chyběl jen kousíček!', '#05d9e8', 2.0);
       } else if (result === 'save') {
         this.score.saves++;
+        this.score.combo = 0;
         this.showBanner('CHYCENO!', 'Brankář se vytáhl!', '#ff2a6d', 2.0);
       } else {
+        this.score.combo = 0;
         this.showBanner('VEDLE!', 'Zamiř lépe do branky!', '#ff2a6d', 2.0);
       }
       this.nextShotTimer = 2.2;
@@ -649,6 +719,19 @@ export class GameEngine {
       this.mode = 'gameover';
       soundManager.playCheer();
       this.particles.spawnGoalConfetti(this.V_WIDTH / 2, this.V_HEIGHT / 3, 100);
+
+      // Zápis do Síně slávy (TOP 3)
+      const res = addLeaderboardScore({
+        name: this.playerConfig.name,
+        number: this.playerConfig.number,
+        jerseyColor: this.playerConfig.jerseyColor,
+        score: this.score.points,
+        goals: this.score.goals,
+        maxShots: this.score.maxShots,
+        goalieLevel: this.goalieAI.config.id,
+      });
+      this.lastLeaderboardRank = res.newRank;
+      this.leaderboard = res.leaderboard;
     } else {
       this.score.currentShot++;
       this.resetBall();
@@ -1146,19 +1229,26 @@ export class GameEngine {
     ctx.stroke();
     ctx.restore();
 
-    // Tělo hráčky (dres Julinky s číslem)
-    ctx.fillStyle = '#ec4899'; // Růžovo-fialový moderní florbalový dres
+    // Tělo hráčky (dres Julinky s nastavitelným číslem a barvou)
+    ctx.fillStyle = this.playerConfig.jerseyColor;
     ctx.beginPath();
     ctx.roundRect(-28, -25, 56, 50, [12, 12, 6, 6]);
     ctx.fill();
+
+    // Stylový lem dresu
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, -25, 12, 0, Math.PI);
+    ctx.stroke();
 
     // Jméno a číslo na zádech
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 11px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('JULINKA', 0, -8);
+    ctx.fillText(this.playerConfig.name.toUpperCase(), 0, -8);
     ctx.font = 'bold 22px sans-serif';
-    ctx.fillText('7', 0, 16);
+    ctx.fillText(this.playerConfig.number.toString(), 0, 16);
 
     // Hlava a culík
     ctx.fillStyle = '#fbcfe8'; // kůže
@@ -1172,8 +1262,8 @@ export class GameEngine {
     ctx.arc(0, -46, 17, Math.PI, Math.PI * 2);
     ctx.fill();
 
-    // Růžová čelenka
-    ctx.strokeStyle = '#ff007f';
+    // Čelenka ladící s barvou dresu
+    ctx.strokeStyle = this.playerConfig.jerseyColor;
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.arc(0, -43, 16, Math.PI * 0.9, Math.PI * 0.1);
@@ -1254,27 +1344,29 @@ export class GameEngine {
       // Horní panel skóre (stavová lišta)
       ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
       ctx.beginPath();
-      ctx.roundRect(20, 16, this.V_WIDTH - 40, 60, 16);
+      ctx.roundRect(16, 16, this.V_WIDTH - 32, 60, 16);
       ctx.fill();
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
       ctx.lineWidth = 1.5;
       ctx.stroke();
 
       ctx.fillStyle = '#f8fafc';
-      ctx.font = 'bold 18px sans-serif';
+      ctx.font = 'bold 16px sans-serif';
       ctx.textAlign = 'left';
-      ctx.fillText(`NÁJEZD ${this.score.currentShot} / ${this.score.maxShots}`, 40, 52);
+      ctx.fillText(`NÁJEZD ${this.score.currentShot}/${this.score.maxShots}`, 32, 52);
 
       // Zobrazení úrovně brankáře uprostřed stavové lišty
       ctx.textAlign = 'center';
       ctx.fillStyle = '#ffe600';
-      ctx.font = 'bold 16px sans-serif';
+      ctx.font = 'bold 15px sans-serif';
       ctx.fillText(this.goalieAI.config.badge, this.V_WIDTH / 2, 52);
 
+      // Vpravo: Góly a body
       ctx.textAlign = 'right';
       ctx.fillStyle = '#00ffcc';
-      ctx.font = 'bold 18px sans-serif';
-      ctx.fillText(`GÓLY: ${this.score.goals}`, this.V_WIDTH - 40, 52);
+      ctx.font = 'bold 15px sans-serif';
+      const comboTxt = this.score.combo > 1 ? ` 🔥${this.score.combo}x` : '';
+      ctx.fillText(`${this.score.goals}⚽ ${this.score.points.toLocaleString('cs-CZ')} b.${comboTxt}`, this.V_WIDTH - 32, 52);
     } else if (this.mode === 'tutorial') {
       const step = this.tutorial.getCurrentStep();
       if (step) {
@@ -1328,48 +1420,162 @@ export class GameEngine {
   }
 
   /**
-   * Vyhodnocení zápasu po 5 nájezdech (GameOver)
+   * Vyhodnocení zápasu po 5 nájezdech (GameOver) se Sídlem slávy (TOP 3)
    */
   private drawGameOverOverlay(ctx: CanvasRenderingContext2D) {
     ctx.save();
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.94)';
     ctx.fillRect(0, 0, this.V_WIDTH, this.V_HEIGHT);
 
+    // Karta s vyhodnocením
+    ctx.fillStyle = 'rgba(30, 41, 59, 0.75)';
+    ctx.beginPath();
+    ctx.roundRect(20, 50, this.V_WIDTH - 40, 830, 24);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Nadpis
     ctx.fillStyle = '#ffe600';
-    ctx.font = 'bold 36px sans-serif';
+    ctx.font = 'bold 30px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('KONEC NÁJEZDŮ!', this.V_WIDTH / 2, 280);
+    ctx.fillText('KONEC ZÁPASU! 🏆', this.V_WIDTH / 2, 95);
 
+    // Odznak hráče (Jméno, číslo a barva dresu)
+    const playerText = `👕 ${this.playerConfig.name} #${this.playerConfig.number}`;
+    ctx.font = 'bold 15px sans-serif';
+    const textWidth = ctx.measureText(playerText).width;
+    const badgeW = textWidth + 30;
+    ctx.fillStyle = this.playerConfig.jerseyColor;
+    ctx.beginPath();
+    ctx.roundRect(this.V_WIDTH / 2 - badgeW / 2, 115, badgeW, 28, 14);
+    ctx.fill();
     ctx.fillStyle = '#ffffff';
-    ctx.font = '22px sans-serif';
-    ctx.fillText(`Vstřelené góly: ${this.score.goals} z ${this.score.maxShots}`, this.V_WIDTH / 2, 335);
+    ctx.fillText(playerText, this.V_WIDTH / 2, 134);
 
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = '16px sans-serif';
-    ctx.fillText(`Brankář: ${this.goalieAI.config.badge} (${this.goalieAI.config.name})`, this.V_WIDTH / 2, 368);
-
-    // Zlaté hvězdy
-    const stars = this.score.goals >= 4 ? 3 : (this.score.goals >= 2 ? 2 : 1);
-    ctx.font = '48px sans-serif';
-    const starText = '⭐'.repeat(stars);
-    ctx.fillText(starText, this.V_WIDTH / 2, 430);
-
-    let cheerMsg = 'Výborný trénink!';
-    if (this.score.goals === 5) cheerMsg = 'NEUVĚŘITELNÉ! Čisté konto pro Julinku! 🏆';
-    else if (this.score.goals >= 3) cheerMsg = 'Fantastický výkon florbalové hvězdy! 🥇';
-    ctx.font = 'bold 18px sans-serif';
+    // Velké skóre
     ctx.fillStyle = '#00ffcc';
-    ctx.fillText(cheerMsg, this.V_WIDTH / 2, 485);
+    ctx.font = 'bold 38px sans-serif';
+    ctx.fillText(`${this.score.points.toLocaleString('cs-CZ')} BODŮ`, this.V_WIDTH / 2, 185);
 
-    // Tlačítko Hrát znovu
+    // Titul podle bodů
+    const playerTitle = getPlayerTitle(this.score.points);
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = 'bold 17px sans-serif';
+    ctx.fillText(`${playerTitle.badge} ${playerTitle.title}`, this.V_WIDTH / 2, 218);
+
+    // Shrnutí gólů a brankáře
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '14px sans-serif';
+    ctx.fillText(
+      `Góly: ${this.score.goals}/${this.score.maxShots} • Brankář: ${this.goalieAI.config.badge}`,
+      this.V_WIDTH / 2,
+      245
+    );
+
+    // Zlatý banner při umístění v TOP 3
+    if (this.lastLeaderboardRank) {
+      ctx.fillStyle = 'rgba(255, 230, 0, 0.15)';
+      ctx.beginPath();
+      ctx.roundRect(40, 260, this.V_WIDTH - 80, 32, 16);
+      ctx.fill();
+      ctx.strokeStyle = '#ffe600';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      ctx.fillStyle = '#ffe600';
+      ctx.font = 'bold 13px sans-serif';
+      ctx.fillText(
+        `🎉 NOVÝ ZÁPIS DO SÍNĚ SLÁVY: ${this.lastLeaderboardRank}. MÍSTO! 🎉`,
+        this.V_WIDTH / 2,
+        281
+      );
+    }
+
+    // --- SÍŇ SLÁVY (TOP 3) TABULKA ---
+    const tableTop = 318;
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = 'bold 18px sans-serif';
+    ctx.fillText('🏆 SÍŇ SLÁVY (TOP 3 HRÁČI)', this.V_WIDTH / 2, tableTop);
+
+    const medals = ['🥇', '🥈', '🥉'];
+    const rowH = 64;
+    const startY = tableTop + 16;
+
+    this.leaderboard.slice(0, 3).forEach((entry, idx) => {
+      const y = startY + idx * (rowH + 8);
+      const isCurrent = this.lastLeaderboardRank === idx + 1;
+
+      // Pozadí řádku
+      ctx.fillStyle = isCurrent ? 'rgba(0, 255, 204, 0.18)' : 'rgba(15, 23, 42, 0.65)';
+      ctx.beginPath();
+      ctx.roundRect(36, y, this.V_WIDTH - 72, rowH, 14);
+      ctx.fill();
+      ctx.strokeStyle = isCurrent ? '#00ffcc' : 'rgba(255, 255, 255, 0.12)';
+      ctx.lineWidth = isCurrent ? 2 : 1;
+      ctx.stroke();
+
+      // Medaile
+      ctx.textAlign = 'left';
+      ctx.font = '24px sans-serif';
+      ctx.fillText(medals[idx] || '🏅', 48, y + 41);
+
+      // Malý dres hráče s číslem
+      ctx.fillStyle = entry.jerseyColor || '#ec4899';
+      ctx.beginPath();
+      ctx.roundRect(86, y + 15, 30, 28, 6);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 13px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(entry.number.toString(), 101, y + 34);
+
+      // Jméno hráče
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#f8fafc';
+      ctx.font = 'bold 15px sans-serif';
+      ctx.fillText(entry.name, 126, y + 31);
+
+      // Podrobnosti (Góly, brankář, datum)
+      const goalieBadge = entry.goalieLevel === 'legend' ? '🔴 Legenda' : (entry.goalieLevel === 'profi' ? '🟡 Profi' : '🟢 Junior');
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '12px sans-serif';
+      ctx.fillText(`${entry.goals}/${entry.maxShots || 5} gólů • ${goalieBadge} • ${entry.date || ''}`, 126, y + 49);
+
+      // Body napravo
+      ctx.textAlign = 'right';
+      ctx.fillStyle = isCurrent ? '#00ffcc' : '#ffe600';
+      ctx.font = 'bold 16px sans-serif';
+      ctx.fillText(`${entry.score.toLocaleString('cs-CZ')} b.`, this.V_WIDTH - 50, y + 39);
+    });
+
+    // --- TLAČÍTKA ---
+    // 1. Tlačítko HRÁT ZNOVU
+    const btnPlayY = 575;
     ctx.fillStyle = '#ff2a6d';
     ctx.beginPath();
-    ctx.roundRect(this.V_WIDTH / 2 - 130, 560, 260, 64, 32);
+    ctx.roundRect(this.V_WIDTH / 2 - 130, btnPlayY, 260, 50, 25);
     ctx.fill();
-
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 22px sans-serif';
-    ctx.fillText('HRÁT ZNOVU 🔄', this.V_WIDTH / 2, 600);
+    ctx.font = 'bold 19px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('HRÁT ZNOVU 🔄', this.V_WIDTH / 2, btnPlayY + 32);
+
+    // 2. Tlačítko UPRAVIT HRÁČE
+    const btnEditY = 640;
+    ctx.fillStyle = 'rgba(30, 41, 59, 0.9)';
+    ctx.beginPath();
+    ctx.roundRect(this.V_WIDTH / 2 - 130, btnEditY, 260, 46, 23);
+    ctx.fill();
+    ctx.strokeStyle = this.playerConfig.jerseyColor;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = 'bold 16px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('UPRAVIT HRÁČE 👕', this.V_WIDTH / 2, btnEditY + 29);
 
     ctx.restore();
   }
@@ -1399,7 +1605,17 @@ export class GameEngine {
         this.startShootout();
       }
     } else if (this.mode === 'gameover') {
-      // V režimu gameover jakýkoliv dotyk spustí novou hru
+      // 1. Tlačítko HRÁT ZNOVU (y: 570 - 630)
+      if (y >= 570 && y <= 630 && x >= this.V_WIDTH / 2 - 140 && x <= this.V_WIDTH / 2 + 140) {
+        this.startShootout();
+        return;
+      }
+      // 2. Tlačítko UPRAVIT HRÁČE (y: 635 - 695)
+      if (y >= 635 && y <= 695 && x >= this.V_WIDTH / 2 - 140 && x <= this.V_WIDTH / 2 + 140) {
+        this.onOpenPlayerModal?.();
+        return;
+      }
+      // Kliknutí mimo tlačítka v režimu gameover spustí novou hru
       this.startShootout();
     }
   }

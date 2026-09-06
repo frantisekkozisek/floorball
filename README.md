@@ -31,7 +31,32 @@ Julinka se krok za krokem s pomocí animovaného prstíku naučí provádět:
 - Zvukové cinknutí tyčky, branková siréna a konfety při gólu.
 - Závěrečné vyhodnocení s počtem vstřelených branek, zlaté hvězdy (⭐), zobrazení obtížnosti a možnost okamžité odvety.
 
-### 3. 🧤 3 Úrovně brankáře (Přepínatelné tlačítkem v horní liště)
+### 3. 👕 Úprava hráče (Jméno, číslo a barva dresu)
+Tlačítkem **👕 Hráč** ve spodní liště (nebo na obrazovce po zápase) můžete kdykoliv otevřít šatnu:
+- **Jméno:** Zadejte libovolné jméno hráčky (výchozí `JULINKA`).
+- **Číslo dresu:** Vyberte šťastné číslo (1–99).
+- **Barva dresu:** Výběr z 8 zářivých florbalových barev (neonová růžová, tyrkysová, jedovatě zelená, zářivá oranžová, královská fialová, ohnivá červená, zlatá žlutá, noční černá).
+- Zvolený dres a číslo se okamžitě zobrazují na zádech hráčky při běhu po hřišti i na čelence ve vlasech a ukládají se do paměti prohlížeče (`localStorage`).
+
+### 4. 🎯 Florbalové bodování & Hodnocení výkonu
+Protože 5 gólů z 5 dá po tréninku každý, hra hodnotí kvalitu a techniku zakončení:
+- **⭐ Vinkl (horní rohy):** +500 b
+- **🚀 Pod břevno:** +350 b
+- **⚡ K tyči po zemi:** +250 b
+- **Běžný gól do sítě:** +150 b
+- **🌀 ZORRO trik (Air flick):** +400 b bonus
+- **⚡ Stahovačka (Toe-drag):** +250 b bonus
+- **Rychlost zakončení:** Až +300 b za bleskový nájezd
+- **🔥 Kombo série:** Každý gól v řadě zvyšuje násobič (1.0x $\to$ 2.0x Clean Sweep!)
+- **🧤 Násobič brankáře:** Junior (1.0x), Profi (1.5x), Legenda (2.5x)
+- **Hráčské tituly:** Podle celkového skóre získáte titul od *Florbalového talentu* 🥉 až po *Nesmrtelnou Legendu florbalu* 👑.
+
+### 5. 🏆 Síň slávy (Tabulka TOP 3)
+Po odehrání 5 nájezdů se zobrazí tabulka 3 nejlepších historických výkonů s medailemi 🥇🥈🥉, jmény, čísly, dresy a body. Pokud překonáte dosavadní rekord, hra váš nový zápis slavnostně zvýrazní!
+
+---
+
+## 🧤 3 Úrovně brankáře (Přepínatelné tlačítkem v liště)
 Tlačítkem **🧤 Junior / Profi / Legenda** můžete kdykoliv zvolit obtížnost brankáře:
 1. **🟢 Junior (Začátečník):**
    - Zelený dres `#10b981`, světle zelená maska.

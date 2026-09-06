@@ -20,9 +20,56 @@
       </div>
 
       <div class="bottom-bar">
+        <button id="btn-player-custom" class="btn btn-player">👕 Julinka #7</button>
         <button id="btn-sound-toggle" class="btn">🔊 Zvuk</button>
         <button id="btn-goalie-level" class="btn btn-goalie">🧤 Profi 🟡</button>
         <button id="btn-switch-mode" class="btn btn-primary">🎓 Trénink triků</button>
+      </div>
+
+      <!-- Modální okno pro úpravu hráče (jméno, číslo, barva dresu) -->
+      <div id="player-modal" class="modal hidden">
+        <div class="modal-backdrop" id="modal-backdrop"></div>
+        <div class="modal-card">
+          <div class="modal-header">
+            <div class="modal-title">👕 Můj florbalový dres</div>
+            <button id="btn-close-modal" class="btn-close" aria-label="Zavřít">&times;</button>
+          </div>
+          <div class="modal-body">
+            <!-- Živý náhled dresu -->
+            <div class="preview-card">
+              <div id="preview-jersey" class="preview-jersey">
+                <div class="preview-collar"></div>
+                <div id="preview-name" class="preview-name">JULINKA</div>
+                <div id="preview-number" class="preview-number">7</div>
+              </div>
+            </div>
+
+            <!-- Jméno -->
+            <div class="form-group">
+              <label for="input-player-name">Jméno na dresu:</label>
+              <input id="input-player-name" type="text" maxlength="10" placeholder="JULINKA" autocomplete="off" />
+            </div>
+
+            <!-- Číslo -->
+            <div class="form-group">
+              <label for="input-player-number">Číslo dresu (1–99):</label>
+              <div class="number-input-row">
+                <button type="button" id="btn-num-dec" class="btn-step">−</button>
+                <input id="input-player-number" type="number" min="1" max="99" value="7" />
+                <button type="button" id="btn-num-inc" class="btn-step">+</button>
+              </div>
+            </div>
+
+            <!-- Barva dresu -->
+            <div class="form-group">
+              <label>Barva dresu:</label>
+              <div id="color-swatches" class="color-swatches"></div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button id="btn-save-player" class="btn btn-primary btn-save">💾 Uložit dres</button>
+          </div>
+        </div>
       </div>
     </div>
     <script type="module" src="/src/main.ts"></script>

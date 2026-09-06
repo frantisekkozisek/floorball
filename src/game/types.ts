@@ -80,6 +80,22 @@ export interface GoalDimensions {
   postRadius: number;
 }
 
+export interface PlayerConfig {
+  name: string;
+  number: number;
+  jerseyColor: string;
+}
+
+export interface ShotScoreBreakdown {
+  targetPoints: number;
+  trickBonus: number;
+  speedBonus: number;
+  comboMultiplier: number;
+  goalieMultiplier: number;
+  totalPoints: number;
+  shotDescription: string;
+}
+
 export interface GameScore {
   shotsTotal: number;
   goals: number;
@@ -87,6 +103,23 @@ export interface GameScore {
   posts: number;
   currentShot: number;
   maxShots: number;
+  points: number;
+  combo: number;
+  lastShotPoints: number;
+  history: ShotScoreBreakdown[];
+}
+
+export interface LeaderboardEntry {
+  id?: string;
+  name: string;
+  number: number;
+  jerseyColor: string;
+  score: number;
+  goals: number;
+  maxShots: number;
+  goalieLevel: GoalieLevel;
+  date: string;
 }
 
 export type GameMode = 'tutorial' | 'shootout' | 'gameover';
+
