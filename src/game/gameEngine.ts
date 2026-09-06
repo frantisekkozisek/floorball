@@ -34,7 +34,7 @@ export class GameEngine {
   public rawDrawnPoints: { x: number; y: number }[] = [];
   public shotTarget: ShotTarget | null = null;
   public releasePoint: { x: number; y: number } | null = null;
-  private isDrawingPath: boolean = false;
+  public isDrawingPath: boolean = false;
   public isRunningPath: boolean = false;
   private pathSegmentIndex: number = 0;
   private pathSegmentProgress: number = 0;
@@ -185,6 +185,24 @@ export class GameEngine {
         return;
       }
 
+      // Pokud běží časovač před dalším nájezdem (zobrazuje se výsledek předchozí střely),
+      // klepnutím na obrazovku okamžitě přeskočíme čekání a zahájíme další nájezd bez kreslení!
+      if (this.nextShotTimer > 0) {
+        this.nextShotTimer = 0;
+        if (this.mode === 'shootout') {
+          this.advanceShootout();
+        } else {
+          this.resetBall();
+        }
+        this.isPointerDown = false;
+        this.isDrawingPath = false;
+        this.rawDrawnPoints = [];
+        this.drawnPath = [];
+        this.shotTarget = null;
+        this.releasePoint = null;
+        return;
+      }
+
       // Zkontrolujeme, zda uživatel nekliknul na tlačítko "Přeskočit trénink / Jít na nájezdy"
       if (this.mode === 'tutorial') {
         if (pos.x >= this.V_WIDTH / 2 - 140 && pos.x <= this.V_WIDTH / 2 + 140 && pos.y >= 840 && pos.y <= 920) {
@@ -197,8 +215,8 @@ export class GameEngine {
       this.isPointerDown = true;
       this.touchPoints = [{ x: pos.x, y: pos.y, time: performance.now() }];
 
-      // Začátek kreslení trasy pro Julinku
-      if (!this.ball.isMoving && !this.isRunningPath) {
+      // Začátek kreslení trasy pro Julinku (POUZE když míček neletí, Julinka neběží a nečeká se na další nájezd)
+      if (!this.ball.isMoving && !this.isRunningPath && this.nextShotTimer <= 0) {
         this.isDrawingPath = true;
         // Trasa začíná u nohou Julinky a pokračuje k prstu
         this.rawDrawnPoints = [
@@ -210,14 +228,14 @@ export class GameEngine {
     };
 
     const onMove = (pos: { x: number; y: number }) => {
-      if (!this.isPointerDown) return;
+      if (!this.isPointerDown || this.nextShotTimer > 0) return;
       const now = performance.now();
       this.touchPoints.push({ x: pos.x, y: pos.y, time: now });
 
-      if (this.isDrawingPath && !this.ball.isMoving && !this.isRunningPath) {
+      if (this.isDrawingPath && !this.ball.isMoving && !this.isRunningPath && this.nextShotTimer <= 0) {
         // Přidáme bod do trasy pokud se prst posunul aspoň o 6px
         const last = this.rawDrawnPoints[this.rawDrawnPoints.length - 1];
-        if (Math.hypot(pos.x - last.x, pos.y - last.y) > 6) {
+        if (last && Math.hypot(pos.x - last.x, pos.y - last.y) > 6) {
           this.rawDrawnPoints.push({ x: pos.x, y: pos.y });
           this.updatePartitionedStroke();
 
@@ -238,11 +256,17 @@ export class GameEngine {
         return;
       }
 
+      if (this.nextShotTimer > 0) {
+        this.isPointerDown = false;
+        this.isDrawingPath = false;
+        return;
+      }
+
       if (!this.isPointerDown) return;
       this.isPointerDown = false;
       this.touchPoints.push({ x: pos.x, y: pos.y, time: performance.now() });
 
-      if (this.isDrawingPath && !this.ball.isMoving && !this.isRunningPath) {
+      if (this.isDrawingPath && !this.ball.isMoving && !this.isRunningPath && this.nextShotTimer <= 0) {
         this.isDrawingPath = false;
         this.rawDrawnPoints.push({ x: pos.x, y: pos.y });
         this.updatePartitionedStroke();
@@ -319,13 +343,16 @@ export class GameEngine {
       }
     }, { passive: false });
 
-    window.addEventListener('resize', () => this.resize());
-    window.addEventListener('orientationchange', () => {
-      setTimeout(() => this.resize(), 100);
-    });
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', () => this.resize());
+      window.addEventListener('orientationchange', () => {
+        setTimeout(() => this.resize(), 100);
+      });
+    }
   }
 
   public resize() {
+    if (typeof window === 'undefined') return;
     const w = window.innerWidth;
     const h = window.innerHeight;
     const aspect = this.V_WIDTH / this.V_HEIGHT;
@@ -352,6 +379,8 @@ export class GameEngine {
   }
 
   private attemptShot(releasePos?: { x: number; y: number }) {
+    if (this.nextShotTimer > 0 || this.ball.isMoving || this.isRunningPath) return;
+
     let shot = analyzeGesture(this.touchPoints);
 
     // Pokud uživatel táhl a uvolnil prst bez prudkého švihu, vytvoříme přímou střelu na branku
@@ -588,6 +617,13 @@ export class GameEngine {
   }
 
   private onShotResult(result: 'goal' | 'save' | 'post' | 'miss') {
+    this.isDrawingPath = false;
+    this.isRunningPath = false;
+    this.rawDrawnPoints = [];
+    this.drawnPath = [];
+    this.shotTarget = null;
+    this.releasePoint = null;
+
     if (this.mode === 'shootout') {
       if (result === 'goal') {
         this.score.goals++;
@@ -649,6 +685,7 @@ export class GameEngine {
    * Vykreslení trasy běhu a zaměřovacího terče v brance (Varianta 1)
    */
   private drawDrawnPath(ctx: CanvasRenderingContext2D) {
+    if (this.nextShotTimer > 0) return;
     if (this.drawnPath.length < 2 && !this.shotTarget) return;
 
     ctx.save();
@@ -1290,6 +1327,16 @@ export class GameEngine {
   }
 
   public handleClickAt(x: number, y: number) {
+    if (this.nextShotTimer > 0) {
+      this.nextShotTimer = 0;
+      if (this.mode === 'shootout') {
+        this.advanceShootout();
+      } else {
+        this.resetBall();
+      }
+      return;
+    }
+
     if (this.mode === 'tutorial') {
       // Kliknutí na tlačítko Jít na nájezdy v tutoriálu
       if (x >= this.V_WIDTH / 2 - 140 && x <= this.V_WIDTH / 2 + 140 && y >= 840 && y <= 920) {

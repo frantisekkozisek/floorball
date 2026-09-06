@@ -473,4 +473,93 @@ describe('Florbalová fyzika & Detekce triků', () => {
       });
     });
   });
+
+  describe('GameEngine - Ochrana proti kreslení a střelbě během přechodu mezi nájezdy', () => {
+    const createMockCanvas = () => {
+      const listeners: Record<string, Function[]> = {};
+      return {
+        canvas: {
+          getContext: () => ({
+            clearRect: () => {},
+            fillRect: () => {},
+            strokeRect: () => {},
+            beginPath: () => {},
+            moveTo: () => {},
+            lineTo: () => {},
+            arc: () => {},
+            stroke: () => {},
+            fill: () => {},
+            save: () => {},
+            restore: () => {},
+            translate: () => {},
+            rotate: () => {},
+            ellipse: () => {},
+            roundRect: () => {},
+            createLinearGradient: () => ({ addColorStop: () => {} }),
+            createRadialGradient: () => ({ addColorStop: () => {} }),
+            setLineDash: () => {},
+            fillText: () => {},
+          }),
+          getBoundingClientRect: () => ({ left: 0, top: 0, width: 540, height: 960 }),
+          style: {},
+          width: 540,
+          height: 960,
+          addEventListener: (event: string, cb: Function) => {
+            if (!listeners[event]) listeners[event] = [];
+            listeners[event].push(cb);
+          },
+          removeEventListener: () => {},
+        } as unknown as HTMLCanvasElement,
+        listeners,
+      };
+    };
+
+    it('neumožní kreslit trasu ani zahájit střelu, pokud běží časovač před dalším nájezdem (nextShotTimer > 0)', async () => {
+      const { GameEngine } = await import('../src/game/gameEngine');
+      const { canvas, listeners } = createMockCanvas();
+      const engine = new GameEngine(canvas);
+
+      // Simulujeme dokončení nájezdu (např. save), které nastaví nextShotTimer = 2.2
+      // @ts-ignore
+      engine.onShotResult('save');
+      // @ts-ignore
+      expect(engine.nextShotTimer).toBeGreaterThan(0);
+
+      const pointerdownHandlers = listeners['pointerdown'] || [];
+      expect(pointerdownHandlers.length).toBeGreaterThan(0);
+
+      // Hráč se pokusí klepnout a táhnout po obrazovce během zobrazení banneru výsledku
+      pointerdownHandlers[0]({
+        preventDefault: () => {},
+        stopPropagation: () => {},
+        clientX: 270,
+        clientY: 700,
+      });
+
+      // Kreslení trasy musí zůstat zablokované (žádná nechtěná čára)
+      expect(engine.isDrawingPath).toBe(false);
+      expect(engine.drawnPath.length).toBe(0);
+      expect(engine.shotTarget).toBeNull();
+    });
+
+    it('klepnutí na obrazovku během zobrazení banneru (nextShotTimer > 0) přeskočí čekání a zahájí další nájezd', async () => {
+      const { GameEngine } = await import('../src/game/gameEngine');
+      const { canvas } = createMockCanvas();
+      const engine = new GameEngine(canvas);
+
+      // @ts-ignore
+      engine.onShotResult('goal');
+      // @ts-ignore
+      expect(engine.nextShotTimer).toBeGreaterThan(0);
+      expect(engine.score.currentShot).toBe(1);
+
+      // Klepnutí na canvas přeskočí zbývající čekání
+      engine.handleClickAt(270, 500);
+
+      // @ts-ignore
+      expect(engine.nextShotTimer).toBe(0);
+      expect(engine.score.currentShot).toBe(2);
+      expect(engine.isDrawingPath).toBe(false);
+    });
+  });
 });
