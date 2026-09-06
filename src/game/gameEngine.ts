@@ -459,6 +459,7 @@ export class GameEngine {
   public update(dt: number) {
     this.particles.update(dt);
     this.tutorial.update(dt);
+    this.goalieAI.update(dt, this.ball);
 
     if (this.bannerTimer > 0) {
       this.bannerTimer -= dt;
@@ -521,15 +522,11 @@ export class GameEngine {
           soundManager.playStickHit();
           this.lastDribbleSoundTime = now;
         }
-
-        // Brankář reaguje na přibližující se Julinku
-        this.goalieAI.update(dt, this.ball);
       }
     }
 
     if (this.ball.isMoving) {
       updateBallPhysics(this.ball, dt, this.goal.y);
-      this.goalieAI.update(dt, this.ball);
 
       // 1. Kontrola zákroku brankáře
       if (this.goalieAI.checkSave(this.ball)) {
@@ -876,16 +873,29 @@ export class GameEngine {
     ctx.save();
     ctx.translate(gl.x, gl.y);
 
-    // Stín brankáře
+    const isDivingLeft = gl.state === 'save_left';
+    const isDivingRight = gl.state === 'save_right';
+    const bodyTilt = isDivingLeft ? -0.16 : (isDivingRight ? 0.16 : 0);
+
+    ctx.rotate(bodyTilt);
+
+    // Stín brankáře (rozšiřuje se při skoku)
     ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
     ctx.beginPath();
-    ctx.ellipse(0, 0, gl.width * 0.6, 14, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, (gl.width * 0.6) + (Math.abs(bodyTilt) * 20), 14, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Chrániče kolen a nohy v kleče
-    ctx.fillStyle = '#1e293b';
-    ctx.fillRect(-32, -18, 26, 18);
-    ctx.fillRect(6, -18, 26, 18);
+    // Chrániče kolen a florbalové betony v kleče
+    ctx.fillStyle = '#0f172a';
+    const leftPadOffset = isDivingLeft ? -16 : 0;
+    const rightPadOffset = isDivingRight ? 16 : 0;
+    ctx.fillRect(-34 + leftPadOffset, -20, 28, 20);
+    ctx.fillRect(6 + rightPadOffset, -20, 28, 20);
+
+    // Žluté slidery na kolenou (typické pro florbal)
+    ctx.fillStyle = '#ffe600';
+    ctx.fillRect(-30 + leftPadOffset, -6, 20, 5);
+    ctx.fillRect(10 + rightPadOffset, -6, 20, 5);
 
     // Brankářský dres (vysoká viditelnost - neonově oranžová)
     ctx.fillStyle = '#ff6b00';
@@ -893,22 +903,31 @@ export class GameEngine {
     ctx.roundRect(-26, -55, 52, 42, [8, 8, 4, 4]);
     ctx.fill();
 
+    // Číslo 1 na dresu brankáře
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 16px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('1', 0, -26);
+
     // Ruce brankáře s florbalovými rukavicemi
+    const armReachLeft = isDivingLeft ? -22 : 0;
+    const armReachRight = isDivingRight ? 22 : 0;
+    const armTilt = isDivingLeft ? -20 : (isDivingRight ? 20 : 0);
+
+    // Levá ruka a bílá florbalová rukavice
     ctx.fillStyle = '#0f172a';
-    const armTilt = gl.state === 'save_left' ? -15 : (gl.state === 'save_right' ? 15 : 0);
-    // Levá ruka
-    ctx.fillRect(-38, -48 + armTilt, 12, 28);
+    ctx.fillRect(-38 + armReachLeft, -48 + armTilt, 12, 28);
     ctx.fillStyle = '#ffffff'; // rukavice
     ctx.beginPath();
-    ctx.arc(-32, -20 + armTilt, 8, 0, Math.PI * 2);
+    ctx.arc(-32 + armReachLeft, -20 + armTilt, 9, 0, Math.PI * 2);
     ctx.fill();
 
-    // Pravá ruka
+    // Pravá ruka a bílá florbalová rukavice
     ctx.fillStyle = '#0f172a';
-    ctx.fillRect(26, -48 - armTilt, 12, 28);
+    ctx.fillRect(26 + armReachRight, -48 - armTilt, 12, 28);
     ctx.fillStyle = '#ffffff';
     ctx.beginPath();
-    ctx.arc(32, -20 - armTilt, 8, 0, Math.PI * 2);
+    ctx.arc(32 + armReachRight, -20 - armTilt, 9, 0, Math.PI * 2);
     ctx.fill();
 
     // Brankářská maska s mřížkou

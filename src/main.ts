@@ -11,9 +11,17 @@ const game = new GameEngine(canvas);
 switchModeBtn.innerText = '🎓 Trénink triků';
 tipBanner.innerText = '✏️ Nakresli trasu k brance a Julinka po ní vyrazí!';
 
-// Správa zvuku
+// Správa zvuku s ochranou proti dvojkliku (pointerdown + click)
+let lastSoundTime = 0;
 const handleSoundToggle = (e?: Event) => {
-  if (e) e.stopPropagation();
+  if (e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+  const now = performance.now();
+  if (now - lastSoundTime < 350) return;
+  lastSoundTime = now;
+
   soundManager.ensureAudio();
   soundManager.isMuted = !soundManager.isMuted;
   soundToggleBtn.innerText = soundManager.isMuted ? '🔇 Zvuk VYPNUT' : '🔊 Zvuk ZAPNUT';
@@ -22,14 +30,18 @@ soundToggleBtn.addEventListener('pointerdown', handleSoundToggle);
 soundToggleBtn.addEventListener('click', handleSoundToggle);
 
 // Přepínání mezi Akademií (tutoriálem) a Ostrými nájezdy / Nová hra
+let lastSwitchTime = 0;
 const handleSwitchMode = (e?: Event) => {
-  if (e) e.stopPropagation();
+  if (e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+  const now = performance.now();
+  if (now - lastSwitchTime < 350) return;
+  lastSwitchTime = now;
+
   soundManager.ensureAudio();
-  if (game.mode === 'gameover') {
-    game.startShootout();
-    switchModeBtn.innerText = '🎓 Trénink triků';
-    tipBanner.innerText = '✏️ Nakresli trasu k brance a Julinka po ní vyrazí!';
-  } else if (game.mode === 'tutorial') {
+  if (game.mode === 'gameover' || game.mode === 'tutorial') {
     game.startShootout();
     switchModeBtn.innerText = '🎓 Trénink triků';
     tipBanner.innerText = '✏️ Nakresli trasu k brance a Julinka po ní vyrazí!';

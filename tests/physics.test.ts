@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { analyzeGesture, analyzeDrawnPath, checkGoalCollision, updateBallPhysics, partitionStroke, calculateShotVelocity } from '../src/game/physics';
+import { GoalkeeperAI } from '../src/game/goalkeeper';
 import { TouchPoint, Ball, GoalDimensions } from '../src/game/types';
 
 describe('Florbalová fyzika & Detekce triků', () => {
@@ -296,6 +297,99 @@ describe('Florbalová fyzika & Detekce triků', () => {
       expect(finalX).toBeCloseTo(target.x, 1);
       expect(finalY).toBeCloseTo(goal.y, 1);
       expect(finalZ).toBeCloseTo(target.z, 1);
+    });
+  });
+
+  describe('GoalkeeperAI', () => {
+    it('aktivně vykrývá úhel podle pozice hráče před střelou', () => {
+      const ai = new GoalkeeperAI(goal);
+      const ball: Ball = {
+        x: 350, // hráč je na pravé straně hřiště
+        y: 500,
+        z: 0,
+        vx: 0,
+        vy: 0,
+        vz: 0,
+        radius: 12,
+        rotation: 0,
+        isMoving: false,
+        trail: [],
+      };
+
+      // Po několika krocích by se brankář měl posunout doprava
+      for (let i = 0; i < 20; i++) {
+        ai.update(0.016, ball);
+      }
+
+      expect(ai.goalie.x).toBeGreaterThan(goal.x);
+    });
+
+    it('bleskově skočí směrem k cíli střely', () => {
+      const ai = new GoalkeeperAI(goal);
+      const ball: Ball = {
+        x: 270,
+        y: 280,
+        z: 20,
+        vx: -300,
+        vy: -600,
+        vz: 100,
+        radius: 12,
+        rotation: 0,
+        isMoving: true,
+        trail: [],
+      };
+
+      ai.onShotInitiated('normal', 200); // střela vlevo k tyči
+      expect(ai.goalie.targetX).toBe(200);
+
+      // Po 0.08s by se měl výrazně pohnout doleva
+      for (let i = 0; i < 6; i++) {
+        ai.update(0.016, ball);
+      }
+      expect(ai.goalie.x).toBeLessThan(goal.x);
+      expect(ai.goalie.state).toBe('save_left');
+    });
+
+    it('nechá se oklamat florbalovou stahovačkou (toe-drag)', () => {
+      const ai = new GoalkeeperAI(goal);
+      ai.onShotInitiated('toe-drag', 210); // střela míří doleva
+      // Při toe-drag brankář skočí nejprve na opačnou stranu (doprava)
+      expect(ai.goalie.targetX).toBeGreaterThan(goal.x);
+    });
+
+    it('chytí střelu doprostřed branky ve výšce těla', () => {
+      const ai = new GoalkeeperAI(goal);
+      const ball: Ball = {
+        x: goal.x,
+        y: ai.goalie.y + 5,
+        z: 40, // výška těla v kleče
+        vx: 0,
+        vy: -600,
+        vz: 0,
+        radius: 12,
+        rotation: 0,
+        isMoving: true,
+        trail: [],
+      };
+      expect(ai.checkSave(ball)).toBe(true);
+    });
+
+    it('pustí střelu vysoko do vinklu (z >= 85) i když míří kousek od těla', () => {
+      const ai = new GoalkeeperAI(goal);
+      const ball: Ball = {
+        x: goal.x + 35, // roh / strana
+        y: ai.goalie.y + 5,
+        z: 95, // vinkl pod břevno
+        vx: 0,
+        vy: -600,
+        vz: 0,
+        radius: 12,
+        rotation: 0,
+        isMoving: true,
+        trail: [],
+      };
+      // Klečící brankář na z = 95 nedosáhne
+      expect(ai.checkSave(ball)).toBe(false);
     });
   });
 });
