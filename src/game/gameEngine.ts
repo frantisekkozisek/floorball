@@ -921,6 +921,68 @@ export class GameEngine {
     ctx.lineTo(xR - 25, g.y - 20);
     ctx.lineTo(xR, g.y);
     ctx.stroke();
+
+    // 5 tréninkových terčů v síti (vinkly ⭐, břevno 🚀, tyčky ⚡)
+    this.drawGoalTargets(ctx);
+  }
+
+  /**
+   * Vykreslení interaktivních terčů v síti branky pro přesné zamíření
+   */
+  private drawGoalTargets(ctx: CanvasRenderingContext2D) {
+    const g = this.goal;
+    const xL = g.x - g.width / 2;
+    const xR = g.x + g.width / 2;
+    const yTop = g.y - g.height;
+
+    const targets = [
+      { id: 'vinkl_left', x: xL + 28, y: yTop + 24, label: '⭐ VINKL', color: '#ffe600' },
+      { id: 'vinkl_right', x: xR - 28, y: yTop + 24, label: '⭐ VINKL', color: '#ffe600' },
+      { id: 'bar', x: g.x, y: yTop + 18, label: '🚀 BŘEVNO', color: '#00ffcc' },
+      { id: 'post_left', x: xL + 28, y: g.y - 18, label: '⚡ TYČ', color: '#ff2a6d' },
+      { id: 'post_right', x: xR - 28, y: g.y - 18, label: '⚡ TYČ', color: '#ff2a6d' },
+    ];
+
+    const isAiming = this.isDrawingPath || this.isRunningPath || this.ball.isMoving;
+    const pulse = Math.sin(performance.now() * 0.007) * 2.5;
+
+    for (const t of targets) {
+      const isSelected = this.shotTarget && Math.hypot(this.shotTarget.x - t.x, this.shotTarget.y - t.y) < 32;
+      const alpha = isSelected ? 0.95 : (isAiming ? 0.55 : 0.28);
+      const radius = (isSelected ? 18 : 13) + (isSelected ? pulse : 0);
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, radius, 0, Math.PI * 2);
+      ctx.fillStyle = isSelected ? 'rgba(15, 23, 42, 0.75)' : 'rgba(15, 23, 42, 0.35)';
+      ctx.fill();
+
+      ctx.strokeStyle = t.color;
+      ctx.globalAlpha = alpha;
+      ctx.lineWidth = isSelected ? 2.5 : 1.5;
+      if (!isSelected) {
+        ctx.setLineDash([4, 3]);
+      }
+      ctx.stroke();
+
+      if (isSelected) {
+        ctx.shadowColor = t.color;
+        ctx.shadowBlur = 12;
+        ctx.stroke();
+      }
+
+      // Popisek terče
+      if (isAiming || isSelected) {
+        ctx.font = isSelected ? 'bold 11px sans-serif' : '9px sans-serif';
+        ctx.fillStyle = t.color;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const labelY = t.y < yTop + 40 ? t.y + 16 : t.y - 16;
+        ctx.fillText(t.label, t.x, labelY);
+      }
+
+      ctx.restore();
+    }
   }
 
   /**

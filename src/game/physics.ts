@@ -215,56 +215,132 @@ export function partitionStroke(
     releasePoint = { x: boundaryX, y: MIN_RUN_Y };
     runPath.push(releasePoint);
 
-    // Cíl střely je určen posledním bodem tahu v brance
+    // Cíl střely je určen bodem tahu v brance s magnetickým přitahováním k terčům
     const lastPoint = points[points.length - 1];
-    const minGoalX = goal.x - goal.width * 0.46;
-    const maxGoalX = goal.x + goal.width * 0.46;
-    targetX = Math.max(minGoalX, Math.min(maxGoalX, lastPoint.x));
+    const minGoalX = goal.x - goal.width * 0.44;
+    const maxGoalX = goal.x + goal.width * 0.44;
+    const rawX = Math.max(minGoalX, Math.min(maxGoalX, lastPoint.x));
+    const rawY = Math.max(goal.y - goal.height + 8, Math.min(goal.y - 6, lastPoint.y));
+    const rawZ = goal.y - rawY;
 
-    const minGoalY = goal.y - goal.height + 8;
-    const maxGoalY = goal.y - 6;
-    targetY = Math.max(minGoalY, Math.min(maxGoalY, lastPoint.y));
-    targetZ = goal.y - targetY;
+    // Magnetické zóny v brance (vinkly, břevno, tyčky):
+    // Zabraňuje náhodnému poskočení při zvednutí prstu z displeje!
+    const isTopZone = lastPoint.y < goal.y - goal.height * 0.48; // horní polovina (vinkly / břevno)
+    const isBottomZone = lastPoint.y >= goal.y - 45; // spodní zóna (k tyčím / zem)
+    const isLeftSector = rawX < goal.x - 30;
+    const isRightSector = rawX > goal.x + 30;
+
+    if (isTopZone) {
+      if (isLeftSector) {
+        // LEVÝ VINKL ⭐
+        targetX = goal.x - goal.width * 0.38;
+        targetZ = 120;
+      } else if (isRightSector) {
+        // PRAVÝ VINKL ⭐
+        targetX = goal.x + goal.width * 0.38;
+        targetZ = 120;
+      } else {
+        // POD BŘEVNO 🚀
+        targetX = goal.x;
+        targetZ = 124;
+      }
+    } else if (isBottomZone) {
+      if (isLeftSector) {
+        // K LEVÉ TYČI ⚡
+        targetX = goal.x - goal.width * 0.40;
+        targetZ = 20;
+      } else if (isRightSector) {
+        // K PRAVÉ TYČI ⚡
+        targetX = goal.x + goal.width * 0.40;
+        targetZ = 20;
+      } else {
+        // PO ZEMI 🎯
+        targetX = goal.x;
+        targetZ = 22;
+      }
+    } else {
+      // Střední výška
+      targetX = rawX;
+      targetZ = Math.max(45, Math.min(75, rawZ));
+    }
+    targetY = goal.y - targetZ;
   } else if (transitionIdx === 0) {
     // Tah začal rovnou v zóně branky
     releasePoint = { x: points[0].x, y: MIN_RUN_Y };
     runPath = [{ x: points[0].x, y: MIN_RUN_Y }];
     const lastPoint = points[points.length - 1];
-    const minGoalX = goal.x - goal.width * 0.46;
-    const maxGoalX = goal.x + goal.width * 0.46;
-    targetX = Math.max(minGoalX, Math.min(maxGoalX, lastPoint.x));
+    const minGoalX = goal.x - goal.width * 0.44;
+    const maxGoalX = goal.x + goal.width * 0.44;
+    const rawX = Math.max(minGoalX, Math.min(maxGoalX, lastPoint.x));
+    const rawY = Math.max(goal.y - goal.height + 8, Math.min(goal.y - 6, lastPoint.y));
+    const rawZ = goal.y - rawY;
 
-    const minGoalY = goal.y - goal.height + 8;
-    const maxGoalY = goal.y - 6;
-    targetY = Math.max(minGoalY, Math.min(maxGoalY, lastPoint.y));
-    targetZ = goal.y - targetY;
+    const isTopZone = lastPoint.y < goal.y - goal.height * 0.48;
+    const isBottomZone = lastPoint.y >= goal.y - 45;
+    const isLeftSector = rawX < goal.x - 30;
+    const isRightSector = rawX > goal.x + 30;
+
+    if (isTopZone) {
+      if (isLeftSector) {
+        targetX = goal.x - goal.width * 0.38;
+        targetZ = 120;
+      } else if (isRightSector) {
+        targetX = goal.x + goal.width * 0.38;
+        targetZ = 120;
+      } else {
+        targetX = goal.x;
+        targetZ = 124;
+      }
+    } else if (isBottomZone) {
+      if (isLeftSector) {
+        targetX = goal.x - goal.width * 0.40;
+        targetZ = 20;
+      } else if (isRightSector) {
+        targetX = goal.x + goal.width * 0.40;
+        targetZ = 20;
+      } else {
+        targetX = goal.x;
+        targetZ = 22;
+      }
+    } else {
+      targetX = rawX;
+      targetZ = Math.max(45, Math.min(75, rawZ));
+    }
+    targetY = goal.y - targetZ;
   } else {
     // Všechny body jsou na palubovce (y >= MIN_RUN_Y)
     runPath = [...points];
     releasePoint = points[points.length - 1];
 
-    // Určíme cíl projekcí směru z posledních bodů běhu
-    const pLast = points[points.length - 1];
-    const pPrev = points[Math.max(0, points.length - 3)];
-    const dx = pLast.x - pPrev.x;
-    const dy = pLast.y - pPrev.y;
+    // Použijeme průměr z posledních bodů pro potlačení chvění prstu při zvednutí
+    const sampleCount = Math.min(6, points.length);
+    const pEnd = points[points.length - 1];
+    const pStart = points[Math.max(0, points.length - sampleCount)];
+    const dx = pEnd.x - pStart.x;
+    const dy = pEnd.y - pStart.y;
 
     if (dy < -2) {
       // Směr nahoru k brance -> projekce na brankovou čáru
-      const t = (goal.y - pLast.y) / dy;
-      const projX = pLast.x + dx * t;
-      targetX = Math.max(goal.x - goal.width * 0.44, Math.min(goal.x + goal.width * 0.44, projX));
+      const t = (goal.y - pEnd.y) / dy;
+      const projX = pEnd.x + dx * t;
+      targetX = Math.max(goal.x - goal.width * 0.42, Math.min(goal.x + goal.width * 0.42, projX));
     } else {
-      targetX = Math.max(goal.x - goal.width * 0.44, Math.min(goal.x + goal.width * 0.44, pLast.x));
+      targetX = Math.max(goal.x - goal.width * 0.42, Math.min(goal.x + goal.width * 0.42, pEnd.x));
     }
 
     const trick = analyzeDrawnPath(points);
     if (trick === 'zorro') {
-      targetZ = 115; // Zvednutý míček pod břevno
+      targetZ = 120; // Zorro trik zvedá míček pod břevno
     } else if (trick === 'toe-drag') {
-      targetZ = 20; // Střela po zemi
+      targetZ = 22; // Stahovačka po zemi
     } else {
-      targetZ = 65; // Střední výška
+      // Pokud hráč švihl prudce nahoru směrem k břevnu
+      const isUpwardFlick = dy < -25;
+      if (isUpwardFlick) {
+        targetZ = 118; // Zvednutá střela pod břevno
+      } else {
+        targetZ = 65; // Střední výška
+      }
     }
     targetY = goal.y - targetZ;
   }

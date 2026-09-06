@@ -262,6 +262,19 @@ describe('Florbalová fyzika & Detekce triků', () => {
       expect(res.shotTarget.label).toContain('K LEVÉ TYČI');
     });
 
+    it('rozdělí tah s cílem pod břevno (střed horní části branky)', () => {
+      const points = [
+        { x: 270, y: 780 },
+        { x: 270, y: 500 },
+        { x: 270, y: 300 },
+        { x: 270, y: 100 }, // střed těsně pod břevnem
+      ];
+      const res = partitionStroke(points, goal);
+      expect(res.shotTarget.x).toBe(goal.x);
+      expect(res.shotTarget.z).toBeGreaterThan(100);
+      expect(res.shotTarget.label).toBe('POD BŘEVNO! 🚀');
+    });
+
     it('promítne směr střely do branky, pokud tah skončí na palubovce', () => {
       const points = [
         { x: 270, y: 780 },

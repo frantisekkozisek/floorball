@@ -10,7 +10,7 @@ const tipBanner = document.getElementById('tip-banner') as HTMLDivElement;
 
 const game = new GameEngine(canvas);
 switchModeBtn.innerText = '🎓 Trénink triků';
-tipBanner.innerText = '✏️ Nakresli trasu k brance a Julinka po ní vyrazí!';
+tipBanner.innerText = '🎯 Pro vinkl ⭐ nebo břevno 🚀 táhni prstem až do branky!';
 
 const updateGoalieButtonLabel = () => {
   if (!goalieLevelBtn) return;
@@ -72,7 +72,7 @@ const handleSwitchMode = (e?: Event) => {
   if (game.mode === 'gameover' || game.mode === 'tutorial') {
     game.startShootout();
     switchModeBtn.innerText = '🎓 Trénink triků';
-    tipBanner.innerText = '✏️ Nakresli trasu k brance a Julinka po ní vyrazí!';
+    tipBanner.innerText = '🎯 Pro vinkl ⭐ nebo břevno 🚀 táhni prstem až do branky!';
   } else {
     game.startTutorial();
     switchModeBtn.innerText = '🏆 Jít na nájezdy';
@@ -121,7 +121,7 @@ function gameLoop(currentTime: number) {
       tipBanner.innerText = '✏️ Nakresli prstem trasu a Julinka po ní poběží!';
     } else if (game.mode === 'shootout') {
       switchModeBtn.innerText = '🎓 Trénink triků';
-      tipBanner.innerText = '✏️ Nakresli trasu k brance a Julinka po ní vyrazí!';
+      tipBanner.innerText = '🎯 Pro vinkl ⭐ nebo břevno 🚀 táhni prstem až do branky!';
     } else if (game.mode === 'gameover') {
       switchModeBtn.innerText = '🔄 Nová hra';
       tipBanner.innerText = '🎉 Zápas skončil! Klepni pro další nájezdy!';
