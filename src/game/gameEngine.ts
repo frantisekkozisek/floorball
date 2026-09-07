@@ -1,5 +1,5 @@
 import { Ball, GameScore, GameMode, GoalDimensions, TouchPoint, TrickType, ShotTarget, GoalieLevel, GoalieConfig, PlayerConfig, LeaderboardEntry } from './types';
-import { analyzeGesture, analyzeDrawnPath, checkGoalCollision, updateBallPhysics, partitionStroke, calculateShotVelocity, getGoalTargetPockets, AIM_OFFSET_Y, AIMING_ZONE_Y } from './physics';
+import { analyzeGesture, analyzeDrawnPath, checkGoalCollision, updateBallPhysics, partitionStroke, calculateShotVelocity, getGoalTargetPockets, resolveGoalTarget, AIM_OFFSET_Y, AIMING_ZONE_Y } from './physics';
 import { GoalkeeperAI } from './goalkeeper';
 import { ParticleSystem } from './particles';
 import { TutorialManager } from './tutorial';
@@ -56,6 +56,14 @@ export class GameEngine {
   private pathSegmentProgress: number = 0;
   private runTimer: number = 0;
   private playerFacingAngle: number = 0;
+
+  // Míření v brance bez kreslení žluté čáry (stacionární a relativní míření)
+  public isAimingLocked: boolean = false;
+  public aimAnchorPoint: { x: number; y: number } | null = null;
+  private aimPauseTimer: number | null = null;
+  private furthestForwardY: number = 9999;
+  private furthestForwardPoint: { x: number; y: number } | null = null;
+  private currentFingerPos: { x: number; y: number } | null = null;
 
   // Vstupní dotykové body
   private touchPoints: TouchPoint[] = [];
@@ -133,6 +141,15 @@ export class GameEngine {
     this.stickAngle = -0.35;
     this.stickTargetAngle = -0.35;
     this.goalieAI.reset();
+    this.isAimingLocked = false;
+    this.aimAnchorPoint = null;
+    this.furthestForwardY = 9999;
+    this.furthestForwardPoint = null;
+    this.currentFingerPos = null;
+    if (this.aimPauseTimer !== null) {
+      clearTimeout(this.aimPauseTimer);
+      this.aimPauseTimer = null;
+    }
   }
 
   public setPlayerConfig(config: Partial<PlayerConfig>) {
@@ -259,17 +276,29 @@ export class GameEngine {
       // Začátek kreslení trasy pro Julinku (POUZE když míček neletí, Julinka neběží a nečeká se na další nájezd)
       if (!this.ball.isMoving && !this.isRunningPath && this.nextShotTimer <= 0) {
         this.isDrawingPath = true;
+        this.isAimingLocked = false;
+        this.aimAnchorPoint = null;
+        this.currentFingerPos = { ...pos };
+        this.furthestForwardY = pos.y;
+        this.furthestForwardPoint = { ...pos };
+        if (this.aimPauseTimer !== null) {
+          clearTimeout(this.aimPauseTimer);
+          this.aimPauseTimer = null;
+        }
+
         // Pokud prst položíme přímo do zóny branky (y <= AIMING_ZONE_Y + 40), jde o přímé míření na branku bez náběhu
         if (pos.y <= AIMING_ZONE_Y + 40) {
           this.rawDrawnPoints = [{ x: pos.x, y: pos.y }];
+          this.lockAimingAt(pos);
         } else {
           // Trasa začíná u nohou Julinky a pokračuje k prstu
           this.rawDrawnPoints = [
             { x: this.playerX, y: this.playerY },
             { x: pos.x, y: pos.y },
           ];
+          this.updatePartitionedStroke();
+          this.scheduleAimLockTimer(pos);
         }
-        this.updatePartitionedStroke();
       }
     };
 
@@ -277,8 +306,33 @@ export class GameEngine {
       if (!this.isPointerDown || this.nextShotTimer > 0) return;
       const now = performance.now();
       this.touchPoints.push({ x: pos.x, y: pos.y, time: now });
+      this.currentFingerPos = { ...pos };
 
       if (this.isDrawingPath && !this.ball.isMoving && !this.isRunningPath && this.nextShotTimer <= 0) {
+        // Pokud je již aktivní režim míření, pouze natáčíme cíl v brance bez kreslení žluté čáry
+        if (this.isAimingLocked) {
+          this.updateAimTarget(pos);
+          return;
+        }
+
+        // Okamžitá detekce zastavení náběhu a přechodu do míření:
+        // a) Prst vjel do zóny branky (y <= AIMING_ZONE_Y)
+        // b) Hráč po náběhu pohne prstem zpět / dělá smyčku (y vzroste o více než 14px)
+        const isBackwardsMove = (this.furthestForwardY < this.playerY - 20) && (pos.y > this.furthestForwardY + 14);
+        if (isBackwardsMove || pos.y <= AIMING_ZONE_Y) {
+          this.lockAimingAt(this.furthestForwardPoint || pos);
+          this.updateAimTarget(pos);
+          return;
+        }
+
+        if (pos.y < this.furthestForwardY) {
+          this.furthestForwardY = pos.y;
+          this.furthestForwardPoint = { ...pos };
+        }
+
+        // Reset časovače zastavení (pokud prst setrvá v místě 110ms, zamkne míření)
+        this.scheduleAimLockTimer(pos);
+
         // Přidáme bod do trasy pokud se prst posunul aspoň o 6px
         const last = this.rawDrawnPoints[this.rawDrawnPoints.length - 1];
         if (!last || Math.hypot(pos.x - last.x, pos.y - last.y) > 6) {
@@ -295,6 +349,11 @@ export class GameEngine {
     };
 
     const onEnd = (pos: { x: number; y: number }) => {
+      if (this.aimPauseTimer !== null) {
+        clearTimeout(this.aimPauseTimer);
+        this.aimPauseTimer = null;
+      }
+
       if (this.mode === 'gameover') {
         this.isPointerDown = false;
         this.isDrawingPath = false;
@@ -314,8 +373,13 @@ export class GameEngine {
 
       if (this.isDrawingPath && !this.ball.isMoving && !this.isRunningPath && this.nextShotTimer <= 0) {
         this.isDrawingPath = false;
-        this.rawDrawnPoints.push({ x: pos.x, y: pos.y });
-        this.updatePartitionedStroke();
+
+        if (this.isAimingLocked) {
+          this.updateAimTarget(pos);
+        } else {
+          this.rawDrawnPoints.push({ x: pos.x, y: pos.y });
+          this.updatePartitionedStroke();
+        }
 
         let totalLength = 0;
         for (let i = 1; i < this.drawnPath.length; i++) {
@@ -431,6 +495,76 @@ export class GameEngine {
     this.releasePoint = partitioned.releasePoint;
 
     // Pokud došlo k uzamčení nové magnetické kapsy, přehrajeme uspokojivý zvukový klik
+    if (this.shotTarget && this.shotTarget.label !== prevLabel) {
+      soundManager.playAimSnap();
+    }
+  }
+
+  /**
+   * Spustí časovač detekce zastavení prstu (pokud hráč 110ms stojí na místě, přejde se do režimu míření)
+   */
+  private scheduleAimLockTimer(currentPos: { x: number; y: number }) {
+    if (this.aimPauseTimer !== null) {
+      clearTimeout(this.aimPauseTimer);
+      this.aimPauseTimer = null;
+    }
+    this.aimPauseTimer = setTimeout(() => {
+      if (this.isPointerDown && this.isDrawingPath && !this.isAimingLocked) {
+        this.lockAimingAt(currentPos);
+      }
+    }, 110) as any;
+  }
+
+  /**
+   * Uzamkne trasu běhu (žlutá čára se přestane kreslit) a aktivuje jemné směrové míření v brance
+   */
+  public lockAimingAt(pos: { x: number; y: number }) {
+    this.isAimingLocked = true;
+    if (this.drawnPath.length > 0) {
+      this.aimAnchorPoint = { ...this.drawnPath[this.drawnPath.length - 1] };
+      this.releasePoint = { ...this.aimAnchorPoint };
+    } else {
+      this.aimAnchorPoint = { ...pos };
+      this.releasePoint = { x: this.playerX, y: this.playerY };
+    }
+    this.updateAimTarget(pos);
+  }
+
+  /**
+   * Aktualizuje zaměřený cíl v brance podle mírných pohybů prstu (doleva/doprava/nahoru/dolů)
+   */
+  public updateAimTarget(pos: { x: number; y: number }) {
+    this.currentFingerPos = { ...pos };
+    const anchor = this.aimAnchorPoint || (this.releasePoint || pos);
+    let aimPos: { x: number; y: number };
+
+    if (pos.y <= AIMING_ZONE_Y + 70) {
+      // Prst je v horní části u branky -> přímé míření s offsetem 55 px
+      const minSightY = this.goal.y - this.goal.height * 0.92;
+      const maxSightY = this.goal.y - 10;
+      aimPos = {
+        x: pos.x,
+        y: Math.max(minSightY, Math.min(maxSightY, pos.y - AIM_OFFSET_Y)),
+      };
+    } else {
+      // Mírné pohyby prstu na hřišti (doprava/doleva/nahoru/dolů)
+      const deltaX = pos.x - anchor.x;
+      const deltaY = pos.y - anchor.y;
+
+      const minSightY = this.goal.y - this.goal.height * 0.92;
+      const maxSightY = this.goal.y - 10;
+      const targetAimX = this.goal.x + deltaX * 2.8;
+      const targetAimY = (this.goal.y - 70) + deltaY * 2.2;
+
+      aimPos = {
+        x: targetAimX,
+        y: Math.max(minSightY, Math.min(maxSightY, targetAimY)),
+      };
+    }
+
+    const prevLabel = this.shotTarget?.label;
+    this.shotTarget = resolveGoalTarget(aimPos, this.goal, this.shotTarget);
+
     if (this.shotTarget && this.shotTarget.label !== prevLabel) {
       soundManager.playAimSnap();
     }
@@ -841,31 +975,64 @@ export class GameEngine {
       ctx.stroke();
     }
 
-    // 2b. Jemné virtuální mířidlo nad prstem hráče (odkrývá výhled na síť a kapsy)
-    const fingerPos = this.rawDrawnPoints.length > 0 ? this.rawDrawnPoints[this.rawDrawnPoints.length - 1] : null;
-    if (this.isDrawingPath && fingerPos && fingerPos.y < AIMING_ZONE_Y + 70) {
-      const sightY = fingerPos.y - AIM_OFFSET_Y;
-      // Spojovací čárkovaná linie od prstu nahoru k mířidlu
-      ctx.beginPath();
-      ctx.moveTo(fingerPos.x, fingerPos.y);
-      ctx.lineTo(fingerPos.x, sightY);
-      ctx.strokeStyle = 'rgba(255, 230, 0, 0.55)';
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([4, 4]);
-      ctx.stroke();
-      ctx.setLineDash([]);
+    // 2b. Jemné virtuální mířidlo nad prstem hráče (nebo kruh míření při zastavení na palubovce)
+    const fingerPos = this.currentFingerPos || (this.rawDrawnPoints.length > 0 ? this.rawDrawnPoints[this.rawDrawnPoints.length - 1] : null);
+    if (this.isDrawingPath && fingerPos) {
+      if (fingerPos.y < AIMING_ZONE_Y + 70) {
+        const sightY = fingerPos.y - AIM_OFFSET_Y;
+        // Spojovací čárkovaná linie od prstu nahoru k mířidlu
+        ctx.beginPath();
+        ctx.moveTo(fingerPos.x, fingerPos.y);
+        ctx.lineTo(fingerPos.x, sightY);
+        ctx.strokeStyle = 'rgba(255, 230, 0, 0.55)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 4]);
+        ctx.stroke();
+        ctx.setLineDash([]);
 
-      // Malý zaměřovací terčík přímo v bodě mířidla
-      ctx.beginPath();
-      ctx.arc(fingerPos.x, sightY, 7, 0, Math.PI * 2);
-      ctx.strokeStyle = '#ffe600';
-      ctx.lineWidth = 2;
-      ctx.stroke();
+        // Malý zaměřovací terčík přímo v bodě mířidla
+        ctx.beginPath();
+        ctx.arc(fingerPos.x, sightY, 7, 0, Math.PI * 2);
+        ctx.strokeStyle = '#ffe600';
+        ctx.lineWidth = 2;
+        ctx.stroke();
 
-      ctx.beginPath();
-      ctx.arc(fingerPos.x, sightY, 2, 0, Math.PI * 2);
-      ctx.fillStyle = '#ff2a6d';
-      ctx.fill();
+        ctx.beginPath();
+        ctx.arc(fingerPos.x, sightY, 2, 0, Math.PI * 2);
+        ctx.fillStyle = '#ff2a6d';
+        ctx.fill();
+      } else if (this.isAimingLocked) {
+        // Hráč zastavil prst na palubovce a provádí mírné pohyby míření v brance
+        ctx.save();
+        const anchor = this.aimAnchorPoint || launchPos;
+
+        // Jemná spojnice od bodu odpalu k pozici prstu (indikuje náklon míření)
+        ctx.beginPath();
+        ctx.moveTo(anchor.x, anchor.y);
+        ctx.lineTo(fingerPos.x, fingerPos.y);
+        ctx.strokeStyle = 'rgba(5, 217, 232, 0.45)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 4]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Kruh míření kolem prstu s pulzujícím lemem
+        ctx.beginPath();
+        ctx.arc(fingerPos.x, fingerPos.y, 16, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.65)';
+        ctx.fill();
+        ctx.strokeStyle = '#05d9e8';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // 4 směrové šipky (nahoru, dolů, doleva, doprava)
+        ctx.fillStyle = '#05d9e8';
+        ctx.fillRect(fingerPos.x - 1.5, fingerPos.y - 12, 3, 5); // nahoru
+        ctx.fillRect(fingerPos.x - 1.5, fingerPos.y + 7, 3, 5);  // dolů
+        ctx.fillRect(fingerPos.x - 12, fingerPos.y - 1.5, 5, 3); // doleva
+        ctx.fillRect(fingerPos.x + 7, fingerPos.y - 1.5, 5, 3);  // doprava
+        ctx.restore();
+      }
     }
 
     // 3. Zaměřovací paprsek a cílový terč v brance

@@ -231,7 +231,6 @@ export function partitionStroke(
   playerPos?: { x: number; y: number }
 ): PartitionedStroke {
   const defaultPlayerPos = playerPos || { x: goal.x, y: 780 };
-  const pockets = getGoalTargetPockets(goal);
 
   if (!points || points.length === 0) {
     const defaultTarget: ShotTarget = {
@@ -266,6 +265,7 @@ export function partitionStroke(
   let runPath: { x: number; y: number }[] = [];
   let releasePoint: { x: number; y: number };
   let isDirectAim = false;
+  let aimPos: { x: number; y: number } | null = null;
 
   if (firstPoint.y <= AIMING_ZONE_Y) {
     // Tah začal přímo v zóně branky -> čisté přímé míření bez běhu
@@ -305,56 +305,108 @@ export function partitionStroke(
     releasePoint = defaultPlayerPos;
   } else {
     // Všechny body jsou na palubovce (tah ještě nedosáhl zóny branky)
-    let floorDist = 0;
+    // Zjistíme, zda tah dosáhl vrcholu dopředného pohybu (peak point) a zbytek jsou mírné pohyby míření / smyčka
+    let peakIdx = 0;
+    let minY = points[0].y;
+    let hasReversal = false;
+
     for (let i = 1; i < points.length; i++) {
-      floorDist += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
+      if (points[i].y < minY) {
+        minY = points[i].y;
+        peakIdx = i;
+      } else if (points[i].y > minY + 16) {
+        // Pohyb zpět o více než 16 px -> detekována smyčka / mírné pohyby míření po zastavení
+        hasReversal = true;
+        break;
+      }
+    }
+
+    // Pokud došlo k otočce/smyčce, ořízneme trasu běhu čistě na dopředný pohyb
+    const effectivePoints = hasReversal ? points.slice(0, peakIdx + 1) : points;
+
+    let floorDist = 0;
+    for (let i = 1; i < effectivePoints.length; i++) {
+      floorDist += Math.hypot(effectivePoints[i].x - effectivePoints[i - 1].x, effectivePoints[i].y - effectivePoints[i - 1].y);
     }
 
     if (floorDist > 35) {
-      runPath = [...points];
-      releasePoint = points[points.length - 1];
+      runPath = [...effectivePoints];
+      releasePoint = effectivePoints[effectivePoints.length - 1];
       isDirectAim = false;
     } else {
       runPath = [];
       releasePoint = defaultPlayerPos;
       isDirectAim = true;
     }
-  }
 
-  // 2. Výpočet virtuálního zaměřovacího bodu (aimPos) s offsetem 55 px nad prst
-  let aimPos: { x: number; y: number };
+    // Pokud došlo ke smyčce / mírným pohybům po zastavení, použijeme relativní posun posledního bodu od bodu odpalu
+    if (hasReversal && runPath.length > 0) {
+      const anchor = releasePoint;
+      const deltaX = lastPoint.x - anchor.x;
+      const deltaY = lastPoint.y - anchor.y;
 
-  if (lastPoint.y <= AIMING_ZONE_Y + 70) {
-    // Prst je v horní části u branky -> virtuální mířidlo je 55 px nad prstem
-    // Omezíme mířidlo, aby nepřestřelilo nad břevno ani pod brankovou čáru
-    const minSightY = goal.y - goal.height * 0.92;
-    const maxSightY = goal.y - 10;
-    aimPos = {
-      x: lastPoint.x,
-      y: Math.max(minSightY, Math.min(maxSightY, lastPoint.y - AIM_OFFSET_Y)),
-    };
-  } else {
-    // Prst je na palubovce -> projekce ze směru posledních bodů tahu
-    const sampleCount = Math.min(6, points.length);
-    const pStart = points[Math.max(0, points.length - sampleCount)];
-    const dx = lastPoint.x - pStart.x;
-    const dy = lastPoint.y - pStart.y;
-
-    if (dy < -2) {
-      const t = (goal.y - 70 - lastPoint.y) / dy;
+      const minSightY = goal.y - goal.height * 0.92;
+      const maxSightY = goal.y - 10;
       aimPos = {
-        x: lastPoint.x + dx * t,
-        y: goal.y - 70,
-      };
-    } else {
-      aimPos = {
-        x: lastPoint.x,
-        y: goal.y - 70,
+        x: goal.x + deltaX * 2.8,
+        y: Math.max(minSightY, Math.min(maxSightY, (goal.y - 70) + deltaY * 2.2)),
       };
     }
   }
 
-  // 3. Hledání magnetické kapsy v brance s hysterezí
+  // 2. Výpočet virtuálního zaměřovacího bodu (aimPos), pokud ještě nebyl spočten z relativních pohybů
+  if (!aimPos!) {
+    if (lastPoint.y <= AIMING_ZONE_Y + 70) {
+      // Prst je v horní části u branky -> virtuální mířidlo je 55 px nad prstem
+      const minSightY = goal.y - goal.height * 0.92;
+      const maxSightY = goal.y - 10;
+      aimPos = {
+        x: lastPoint.x,
+        y: Math.max(minSightY, Math.min(maxSightY, lastPoint.y - AIM_OFFSET_Y)),
+      };
+    } else {
+      // Prst je na palubovce -> projekce ze směru posledních bodů tahu
+      const sampleCount = Math.min(6, points.length);
+      const pStart = points[Math.max(0, points.length - sampleCount)];
+      const dx = lastPoint.x - pStart.x;
+      const dy = lastPoint.y - pStart.y;
+
+      if (dy < -2) {
+        const t = (goal.y - 70 - lastPoint.y) / dy;
+        aimPos = {
+          x: lastPoint.x + dx * t,
+          y: goal.y - 70,
+        };
+      } else {
+        aimPos = {
+          x: lastPoint.x,
+          y: goal.y - 70,
+        };
+      }
+    }
+  }
+
+  const shotTarget = resolveGoalTarget(aimPos, goal, previousTarget);
+
+  return {
+    runPath,
+    shotTarget,
+    releasePoint,
+    isDirectAim,
+  };
+}
+
+/**
+ * Vyhodnotí zaměřený cíl v brance s magnetickým zámkem do 5 kapes (s hysterezí pro udržení zámku).
+ */
+export function resolveGoalTarget(
+  aimPos: { x: number; y: number },
+  goal: GoalDimensions,
+  previousTarget?: ShotTarget | null
+): ShotTarget {
+  const pockets = getGoalTargetPockets(goal);
+
+  // Hledání magnetické kapsy v brance s hysterezí
   let matchedPocket: GoalPocket | null = null;
   let minPocketDist = Infinity;
 
@@ -408,16 +460,11 @@ export function partitionStroke(
   }
 
   return {
-    runPath,
-    shotTarget: {
-      x: targetX,
-      y: targetY,
-      z: targetZ,
-      label,
-      badgeColor,
-    },
-    releasePoint,
-    isDirectAim,
+    x: targetX,
+    y: targetY,
+    z: targetZ,
+    label,
+    badgeColor,
   };
 }
 

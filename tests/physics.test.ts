@@ -693,4 +693,103 @@ describe('Florbalová fyzika & Detekce triků', () => {
       expect(engine.isDrawingPath).toBe(false);
     });
   });
+
+  describe('Stacionární míření na palubovce & oříznutí smyček (Bez kreslení žluté čáry)', () => {
+    const createMockCanvas = () => {
+      const listeners: Record<string, Function[]> = {};
+      return {
+        canvas: {
+          getContext: () => ({
+            clearRect: () => {},
+            fillRect: () => {},
+            strokeRect: () => {},
+            beginPath: () => {},
+            moveTo: () => {},
+            lineTo: () => {},
+            arc: () => {},
+            stroke: () => {},
+            fill: () => {},
+            save: () => {},
+            restore: () => {},
+            translate: () => {},
+            rotate: () => {},
+            ellipse: () => {},
+            roundRect: () => {},
+            createLinearGradient: () => ({ addColorStop: () => {} }),
+            createRadialGradient: () => ({ addColorStop: () => {} }),
+            setLineDash: () => {},
+            fillText: () => {},
+          }),
+          getBoundingClientRect: () => ({ left: 0, top: 0, width: 540, height: 960 }),
+          style: {},
+          width: 540,
+          height: 960,
+          addEventListener: (event: string, cb: Function) => {
+            if (!listeners[event]) listeners[event] = [];
+            listeners[event].push(cb);
+          },
+          removeEventListener: () => {},
+        } as unknown as HTMLCanvasElement,
+        listeners,
+      };
+    };
+
+    it('partitionStroke ořízne zpětnou smyčku a zafixuje trasu běhu v bodě zastavení', () => {
+      // Hráč běží z 780 do 480, tam zastaví a zkouší mířit (dělá smyčku 505, 520, 480)
+      const pointsWithLoop = [
+        { x: 270, y: 780 },
+        { x: 265, y: 650 },
+        { x: 260, y: 550 },
+        { x: 260, y: 480 }, // Vrchol náběhu (bod odpalu)
+        { x: 235, y: 505 }, // Zpětná smyčka při snaze mířit doleva
+        { x: 220, y: 520 },
+        { x: 245, y: 480 },
+      ];
+
+      const res = partitionStroke(pointsWithLoop, goal);
+
+      // Trasa běhu končí na 480 a neobsahuje žádné body zpětné smyčky
+      expect(res.runPath.length).toBe(4);
+      expect(res.releasePoint.x).toBe(260);
+      expect(res.releasePoint.y).toBe(480);
+      for (const pt of res.runPath) {
+        expect(pt.y).toBeGreaterThanOrEqual(480);
+      }
+      expect(res.runPath[res.runPath.length - 1]).toEqual({ x: 260, y: 480 });
+    });
+
+    it('GameEngine v reálném čase zamkne trasu při pohybu vzad a další mírné pohyby míří bez prodlužování čáry', async () => {
+      const { GameEngine } = await import('../src/game/gameEngine');
+      const { canvas, listeners } = createMockCanvas();
+      const engine = new GameEngine(canvas);
+
+      const pointerdown = listeners['pointerdown']?.[0];
+      const pointermove = listeners['pointermove']?.[0];
+      expect(pointerdown).toBeDefined();
+      expect(pointermove).toBeDefined();
+
+      // 1. Hráč začne táhnout u Julinky dopředu
+      pointerdown({ preventDefault: () => {}, clientX: 270, clientY: 740 });
+      pointermove({ preventDefault: () => {}, clientX: 265, clientY: 600 });
+      pointermove({ preventDefault: () => {}, clientX: 260, clientY: 480 });
+
+      expect(engine.isAimingLocked).toBe(false);
+      const frozenLength = engine.drawnPath.length;
+      expect(frozenLength).toBeGreaterThanOrEqual(2);
+
+      // 2. Hráč zastaví a pohne prstem mírně zpět a doleva pro zamíření na vinkl
+      pointermove({ preventDefault: () => {}, clientX: 230, clientY: 505 });
+
+      // Režim míření se okamžitě zamkne!
+      expect(engine.isAimingLocked).toBe(true);
+
+      // 3. Další pohyby prstem nemění ani neprodlužují žlutou trasu na zemi
+      pointermove({ preventDefault: () => {}, clientX: 215, clientY: 490 });
+      pointermove({ preventDefault: () => {}, clientX: 240, clientY: 510 });
+
+      expect(engine.drawnPath.length).toBe(frozenLength);
+      // Cíl v brance je aktivní
+      expect(engine.shotTarget).not.toBeNull();
+    });
+  });
 });

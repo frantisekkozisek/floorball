@@ -15,21 +15,25 @@ Jediným intuitivním tahem prstu po displeji určíte celou akci bez nechtěné
 2. **Kreslení náběhu / kličky po palubovce:**
    - Pokud chcete Julinku navést do strany (např. oběhnout brankáře či provést kličku), můžete prstem kreslit trasu po palubovce.
    - Žlutá stopa se kreslí **výhradně po hřišti a zastaví se před brankovištěm** (`AIMING_ZONE_Y = 320`). Do prostoru branky nikdy nezasahuje.
-3. **Pohyb prstem v brance nemění trasu na zemi:**
+3. **Stacionární míření na palubovce (Zastavení prstu & mírné pohyby):**
+   - Jakmile prstem po náběhu **zastavíte na místě** (nebo uděláte mírný pohyb zpět či do stran), trasa běhu se **okamžitě zafixuje v bodě zastavení a žlutá čára se přestane kreslit**!
+   - Mírné pohyby prstu v jakémkoliv směru (doleva, doprava, nahoru k břevnu, dolů k zemi) fungují jako citlivý analogový zaměřovač do branky bez jakéhokoliv čmárání smyček či uzlů po palubovce.
+   - Pod prstem se zobrazí jemný směrový zaměřovač a laserový paprsek navádí střelu z bodu zastavení přímo do sítě!
+4. **Pohyb prstem v brance nemění trasu na zemi:**
    - Jakmile prst vjede do prostoru branky, trasa běhu po palubovce se zafixuje a nemění se.
    - Hráč může v klidu přejíždět mezi všemi 5 kapsami v síti, aniž by tím kroutil trasu na zemi.
-4. **Virtuální mířidlo nad prstem (offset 55 px):**
+5. **Virtuální mířidlo nad prstem (offset 55 px):**
    - Prst na mobilním displeji nezakrývá branku ani gólmana – zaměřovací kříž je promítán 55 px nad špičku prstu s jemnou čárkovanou spojnicí.
-5. **5 velkých magnetických kapes v síti:**
+6. **5 velkých magnetických kapes v síti:**
    - **⭐ LEVÝ VINKL:** Zakončení do levého horního rohu sítě (vysoká trajektorie, +500 b).
    - **🚀 POD BŘEVNO:** Střední pumelice přímo pod horní břevno (+350 b).
    - **⭐ PRAVÝ VINKL:** Zakončení do pravého horního rohu sítě (+500 b).
    - **⚡ K LEVÉ TYČI:** Přízemní rána k levé tyči do protipohybu brankáře (+250 b).
    - **⚡ K PRAVÉ TYČI:** Přízemní rána k pravé tyči (+250 b).
-6. **Magnetický zámek s hysterezí & akustickou odezvou:**
+7. **Magnetický zámek s hysterezí & akustickou odezvou:**
    - Jakmile se virtuální mířidlo přiblíží ke kapse na 54 px, cíl magneticky zacvakne se zvukovým klikem (`soundManager.playAimSnap()`).
    - Záchytná hystereze (76 px) udrží zámek i při zvednutí prstu z displeje.
-7. **Akce po zvednutí prstu:** Julinka buď bleskově vystřelí z místa, nebo proběhne nakreslenou trasu po palubovce a před brankovištěm nekompromisně zavěsí do vybrané kapsy!
+8. **Akce po zvednutí prstu:** Julinka buď bleskově vystřelí z místa, nebo proběhne nakreslenou trasu po palubovce a v bodě zastavení nekompromisně zavěsí do vybrané kapsy!
 
 ---
 
