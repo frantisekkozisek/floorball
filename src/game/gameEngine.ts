@@ -1,5 +1,5 @@
 import { Ball, GameScore, GameMode, GoalDimensions, TouchPoint, TrickType, ShotTarget, GoalieLevel, GoalieConfig, PlayerConfig, LeaderboardEntry } from './types';
-import { analyzeGesture, analyzeDrawnPath, checkGoalCollision, updateBallPhysics, partitionStroke, calculateShotVelocity, getGoalTargetPockets, AIM_OFFSET_Y } from './physics';
+import { analyzeGesture, analyzeDrawnPath, checkGoalCollision, updateBallPhysics, partitionStroke, calculateShotVelocity, getGoalTargetPockets, AIM_OFFSET_Y, AIMING_ZONE_Y } from './physics';
 import { GoalkeeperAI } from './goalkeeper';
 import { ParticleSystem } from './particles';
 import { TutorialManager } from './tutorial';
@@ -259,11 +259,16 @@ export class GameEngine {
       // Začátek kreslení trasy pro Julinku (POUZE když míček neletí, Julinka neběží a nečeká se na další nájezd)
       if (!this.ball.isMoving && !this.isRunningPath && this.nextShotTimer <= 0) {
         this.isDrawingPath = true;
-        // Trasa začíná u nohou Julinky a pokračuje k prstu
-        this.rawDrawnPoints = [
-          { x: this.playerX, y: this.playerY },
-          { x: pos.x, y: pos.y },
-        ];
+        // Pokud prst položíme přímo do zóny branky (y <= AIMING_ZONE_Y + 40), jde o přímé míření na branku bez náběhu
+        if (pos.y <= AIMING_ZONE_Y + 40) {
+          this.rawDrawnPoints = [{ x: pos.x, y: pos.y }];
+        } else {
+          // Trasa začíná u nohou Julinky a pokračuje k prstu
+          this.rawDrawnPoints = [
+            { x: this.playerX, y: this.playerY },
+            { x: pos.x, y: pos.y },
+          ];
+        }
         this.updatePartitionedStroke();
       }
     };
@@ -276,12 +281,12 @@ export class GameEngine {
       if (this.isDrawingPath && !this.ball.isMoving && !this.isRunningPath && this.nextShotTimer <= 0) {
         // Přidáme bod do trasy pokud se prst posunul aspoň o 6px
         const last = this.rawDrawnPoints[this.rawDrawnPoints.length - 1];
-        if (last && Math.hypot(pos.x - last.x, pos.y - last.y) > 6) {
+        if (!last || Math.hypot(pos.x - last.x, pos.y - last.y) > 6) {
           this.rawDrawnPoints.push({ x: pos.x, y: pos.y });
           this.updatePartitionedStroke();
 
-          // Tichý zvuk vedení míčku při kreslení
-          if (now - this.lastDribbleSoundTime > 220) {
+          // Tichý zvuk vedení míčku při kreslení po palubovce
+          if (pos.y > AIMING_ZONE_Y && now - this.lastDribbleSoundTime > 220) {
             soundManager.playStickHit();
             this.lastDribbleSoundTime = now;
           }
@@ -317,15 +322,16 @@ export class GameEngine {
           totalLength += Math.hypot(this.drawnPath[i].x - this.drawnPath[i - 1].x, this.drawnPath[i].y - this.drawnPath[i - 1].y);
         }
 
-        // Pokud je nakreslená trasa delší než 25px, Julinka se po ní rozběhne!
-        if (totalLength > 25 && this.drawnPath.length >= 2) {
+        // Pokud je nakreslená reálná trasa běhu po palubovce (> 35px), Julinka se po ní rozběhne!
+        if (totalLength > 35 && this.drawnPath.length >= 2) {
           this.isRunningPath = true;
           this.pathSegmentIndex = 0;
           this.pathSegmentProgress = 0;
           this.runTimer = 0;
         } else {
-          // Krátký ťuk na obrazovku -> přímá střela
-          this.attemptShot(pos);
+          // Přímá střela bez běhu (nebo přímé zamíření do vybrané kapsy)
+          this.drawnPath = [];
+          this.attemptShot(this.releasePoint || { x: this.playerX, y: this.playerY });
         }
       }
       this.touchPoints = [];
@@ -414,7 +420,12 @@ export class GameEngine {
 
   private updatePartitionedStroke() {
     const prevLabel = this.shotTarget?.label;
-    const partitioned = partitionStroke(this.rawDrawnPoints, this.goal, this.shotTarget);
+    const partitioned = partitionStroke(
+      this.rawDrawnPoints,
+      this.goal,
+      this.shotTarget,
+      { x: this.playerX, y: this.playerY }
+    );
     this.drawnPath = partitioned.runPath;
     this.shotTarget = partitioned.shotTarget;
     this.releasePoint = partitioned.releasePoint;
@@ -817,10 +828,10 @@ export class GameEngine {
       ctx.setLineDash([]);
     }
 
-    // 2. Bod odpalu na konci běžecké trasy
+    // 2. Bod odpalu na konci běžecké trasy (pouze při náběhu)
     const launchPos = this.releasePoint || (this.drawnPath.length > 0 ? this.drawnPath[this.drawnPath.length - 1] : { x: this.playerX, y: this.playerY });
 
-    if (this.isDrawingPath || this.isRunningPath) {
+    if ((this.isDrawingPath || this.isRunningPath) && this.drawnPath.length >= 2) {
       ctx.fillStyle = '#ff007f';
       ctx.beginPath();
       ctx.arc(launchPos.x, launchPos.y, 8, 0, Math.PI * 2);
@@ -831,32 +842,30 @@ export class GameEngine {
     }
 
     // 2b. Jemné virtuální mířidlo nad prstem hráče (odkrývá výhled na síť a kapsy)
-    if (this.isDrawingPath && this.drawnPath.length > 0) {
-      const fingerPos = this.drawnPath[this.drawnPath.length - 1];
-      if (fingerPos.y < 355) {
-        const sightY = fingerPos.y - AIM_OFFSET_Y;
-        // Spojovací čárkovaná linie od prstu nahoru k mířidlu
-        ctx.beginPath();
-        ctx.moveTo(fingerPos.x, fingerPos.y);
-        ctx.lineTo(fingerPos.x, sightY);
-        ctx.strokeStyle = 'rgba(255, 230, 0, 0.55)';
-        ctx.lineWidth = 1.5;
-        ctx.setLineDash([4, 4]);
-        ctx.stroke();
-        ctx.setLineDash([]);
+    const fingerPos = this.rawDrawnPoints.length > 0 ? this.rawDrawnPoints[this.rawDrawnPoints.length - 1] : null;
+    if (this.isDrawingPath && fingerPos && fingerPos.y < AIMING_ZONE_Y + 70) {
+      const sightY = fingerPos.y - AIM_OFFSET_Y;
+      // Spojovací čárkovaná linie od prstu nahoru k mířidlu
+      ctx.beginPath();
+      ctx.moveTo(fingerPos.x, fingerPos.y);
+      ctx.lineTo(fingerPos.x, sightY);
+      ctx.strokeStyle = 'rgba(255, 230, 0, 0.55)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
 
-        // Malý zaměřovací terčík přímo v bodě mířidla
-        ctx.beginPath();
-        ctx.arc(fingerPos.x, sightY, 7, 0, Math.PI * 2);
-        ctx.strokeStyle = '#ffe600';
-        ctx.lineWidth = 2;
-        ctx.stroke();
+      // Malý zaměřovací terčík přímo v bodě mířidla
+      ctx.beginPath();
+      ctx.arc(fingerPos.x, sightY, 7, 0, Math.PI * 2);
+      ctx.strokeStyle = '#ffe600';
+      ctx.lineWidth = 2;
+      ctx.stroke();
 
-        ctx.beginPath();
-        ctx.arc(fingerPos.x, sightY, 2, 0, Math.PI * 2);
-        ctx.fillStyle = '#ff2a6d';
-        ctx.fill();
-      }
+      ctx.beginPath();
+      ctx.arc(fingerPos.x, sightY, 2, 0, Math.PI * 2);
+      ctx.fillStyle = '#ff2a6d';
+      ctx.fill();
     }
 
     // 3. Zaměřovací paprsek a cílový terč v brance

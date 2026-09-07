@@ -18,6 +18,7 @@ export interface PartitionedStroke {
   runPath: { x: number; y: number }[];
   shotTarget: ShotTarget;
   releasePoint: { x: number; y: number };
+  isDirectAim?: boolean;
 }
 
 export interface ShotParams {

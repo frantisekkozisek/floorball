@@ -7,20 +7,29 @@ Hra nabízí 2.5D arkádový styl z pohledu zezadu, interaktivní **Florbalovou 
 
 ## 🎮 Herní mechanika & Ovládání
 
-### Kreslení trasy běhu & Cílení do branky (Varianta 1)
-Jediným plynulým tahem prstu po displeji určíte celou akci:
-1. **Trasa běhu po hřišti:** Na palubovce se vykresluje svítící neonová trasa s animovanými šipkami, kudy Julinka poběží s míčkem.
-2. **Virtuální mířidlo nad prstem (offset 55 px):** Prst na mobilním displeji nikdy nezakrývá branku ani gólmana – zaměřovací kříž je promítán 55 px nad špičku prstu s jemnou čárkovanou spojnicí.
-3. **5 velkých magnetických kapes v síti:**
+### Kreslení trasy běhu & Cílení do branky (Varianta A)
+Jediným intuitivním tahem prstu po displeji určíte celou akci bez nechtěného čmárání po hřišti:
+1. **Čisté přímé míření na branku (bez běhu):**
+   - Pokud se prstem dotknete nebo zamíříte přímo v horní části hřiště k brance, **žádná žlutá čára po zemi se nekreslí**!
+   - Z pozice Julinky míří do sítě přímo čistý laserový zaměřovací paprsek k vybrané kapse. Po puštění prstu Julinka ihned zakončí.
+2. **Kreslení náběhu / kličky po palubovce:**
+   - Pokud chcete Julinku navést do strany (např. oběhnout brankáře či provést kličku), můžete prstem kreslit trasu po palubovce.
+   - Žlutá stopa se kreslí **výhradně po hřišti a zastaví se před brankovištěm** (`AIMING_ZONE_Y = 320`). Do prostoru branky nikdy nezasahuje.
+3. **Pohyb prstem v brance nemění trasu na zemi:**
+   - Jakmile prst vjede do prostoru branky, trasa běhu po palubovce se zafixuje a nemění se.
+   - Hráč může v klidu přejíždět mezi všemi 5 kapsami v síti, aniž by tím kroutil trasu na zemi.
+4. **Virtuální mířidlo nad prstem (offset 55 px):**
+   - Prst na mobilním displeji nezakrývá branku ani gólmana – zaměřovací kříž je promítán 55 px nad špičku prstu s jemnou čárkovanou spojnicí.
+5. **5 velkých magnetických kapes v síti:**
    - **⭐ LEVÝ VINKL:** Zakončení do levého horního rohu sítě (vysoká trajektorie, +500 b).
    - **🚀 POD BŘEVNO:** Střední pumelice přímo pod horní břevno (+350 b).
    - **⭐ PRAVÝ VINKL:** Zakončení do pravého horního rohu sítě (+500 b).
    - **⚡ K LEVÉ TYČI:** Přízemní rána k levé tyči do protipohybu brankáře (+250 b).
    - **⚡ K PRAVÉ TYČI:** Přízemní rána k pravé tyči (+250 b).
-4. **Magnetický zámek s hysterezí & akustickou odezvou:**
-   - Jakmile se virtuální mířidlo přiblíží ke kapse na 54 px, cíl magneticky zacvakne (`soundManager.playAimSnap()`).
-   - Díky záchytné hysterezi (76 px) zámek spolehlivě drží i při drobném chvění prstu při zvednutí z displeje.
-5. **Akce po zvednutí prstu:** Julinka bleskově vyrazí po nakreslené trase, vede míček na hokejce, před brankovištěm napřáhne a odpálí míček přesně do vybrané kapsy v brance! Styl triku (běžná rána, stahovačka, zorro) obohatí animaci a skóre, ale nikdy nezmění hráčem zvolený cíl v brance.
+6. **Magnetický zámek s hysterezí & akustickou odezvou:**
+   - Jakmile se virtuální mířidlo přiblíží ke kapse na 54 px, cíl magneticky zacvakne se zvukovým klikem (`soundManager.playAimSnap()`).
+   - Záchytná hystereze (76 px) udrží zámek i při zvednutí prstu z displeje.
+7. **Akce po zvednutí prstu:** Julinka buď bleskově vystřelí z místa, nebo proběhne nakreslenou trasu po palubovce a před brankovištěm nekompromisně zavěsí do vybrané kapsy!
 
 ---
 

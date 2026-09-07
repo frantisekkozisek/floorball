@@ -10,6 +10,7 @@ import {
   AIM_OFFSET_Y,
   SNAP_ENTER_RADIUS,
   SNAP_HOLD_RADIUS,
+  AIMING_ZONE_Y,
 } from '../src/game/physics';
 import { GoalkeeperAI } from '../src/game/goalkeeper';
 import { TouchPoint, Ball, GoalDimensions } from '../src/game/types';
@@ -258,12 +259,13 @@ describe('Florbalová fyzika & Detekce triků', () => {
   describe('partitionStroke()', () => {
     it('vrátí výchozí hodnoty pro prázdné pole', () => {
       const res = partitionStroke([], goal);
-      expect(res.runPath.length).toBe(1);
+      expect(res.runPath.length).toBe(0);
+      expect(res.isDirectAim).toBe(true);
       expect(res.shotTarget).toBeDefined();
       expect(res.shotTarget.label).toContain('STŘELA');
     });
 
-    it('rozdělí tah na trasu běhu (y >= 285) a cíl v levém vinklu s offsetem 55 px nad prstem', () => {
+    it('rozdělí tah na trasu běhu (y >= AIMING_ZONE_Y) a cíl v levém vinklu s offsetem 55 px nad prstem', () => {
       const points = [
         { x: 270, y: 780 },
         { x: 230, y: 550 },
@@ -273,16 +275,52 @@ describe('Florbalová fyzika & Detekce triků', () => {
       ];
       const res = partitionStroke(points, goal);
 
-      // Trasa běhu se zastaví na shooting line Y >= 285
+      // Trasa běhu se zastaví na shooting line Y >= AIMING_ZONE_Y
       for (const p of res.runPath) {
-        expect(p.y).toBeGreaterThanOrEqual(284.9);
+        expect(p.y).toBeGreaterThanOrEqual(AIMING_ZONE_Y - 0.1);
       }
-      expect(res.releasePoint.y).toBe(285);
+      expect(res.releasePoint.y).toBe(AIMING_ZONE_Y);
 
       // Cíl v brance odpovídá levému vinklu
       expect(res.shotTarget.x).toBeLessThan(goal.x - 35);
       expect(res.shotTarget.z).toBeGreaterThan(80);
       expect(res.shotTarget.label).toBe('⭐ LEVÝ VINKL!');
+    });
+
+    it('detekuje přímé míření na branku bez náběhu, pokud tah začne v zóně branky (Y <= AIMING_ZONE_Y)', () => {
+      const points = [
+        { x: 180, y: 200 },
+        { x: 180, y: 163 }, // prst je v levém vinklu
+      ];
+      const res = partitionStroke(points, goal);
+      expect(res.isDirectAim).toBe(true);
+      expect(res.runPath.length).toBe(0); // Žádná žlutá čára běhu po palubovce!
+      expect(res.shotTarget.label).toBe('⭐ LEVÝ VINKL!');
+    });
+
+    it('nemění ani neprodlužuje trasu běhu na palubovce, když hráč hýbe prstem v brance mezi vinkly', () => {
+      // Hráč nakreslil náběh po palubovce a vjel do zóny branky
+      const basePoints = [
+        { x: 270, y: 780 },
+        { x: 230, y: 500 },
+        { x: 230, y: 320 },
+      ];
+
+      // 1. Prst zamíří na levý vinkl
+      const pointsAimLeft = [...basePoints, { x: 180, y: 163 }];
+      const resLeft = partitionStroke(pointsAimLeft, goal);
+
+      // 2. Prst přejede na pravý vinkl
+      const pointsAimRight = [...basePoints, { x: 180, y: 163 }, { x: 270, y: 150 }, { x: 360, y: 163 }];
+      const resRight = partitionStroke(pointsAimRight, goal);
+
+      // Cíle se správně změnily
+      expect(resLeft.shotTarget.label).toBe('⭐ LEVÝ VINKL!');
+      expect(resRight.shotTarget.label).toBe('⭐ PRAVÝ VINKL!');
+
+      // Ale trasa běhu po palubovce zůstala 100% identická a nezměněná!
+      expect(resLeft.runPath).toEqual(resRight.runPath);
+      expect(resLeft.releasePoint).toEqual(resRight.releasePoint);
     });
 
     it('rozdělí tah s cílem v pravém vinklu', () => {

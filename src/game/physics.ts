@@ -153,6 +153,7 @@ export function analyzeDrawnPath(path: { x: number; y: number }[]): TrickType {
 export const AIM_OFFSET_Y = 55; // Zaměřovač 55 px nad prstem hráče
 export const SNAP_ENTER_RADIUS = 54; // Vzdálenost pro magnetické přitažení do kapsy
 export const SNAP_HOLD_RADIUS = 76;  // Hystereze pro udržení zámku
+export const AIMING_ZONE_Y = 320;    // Hranice brankoviště – nad ní se již nekreslí trasa běhu, ale čistě míří
 
 export interface GoalPocket {
   id: string;
@@ -218,16 +219,18 @@ export function getGoalTargetPockets(goal: GoalDimensions): GoalPocket[] {
 
 /**
  * Rozdělí nakreslené body tahu na:
- * 1. `runPath`: trasu běhu Julinky po palubovce (zastaví se před brankovištěm na Y >= 285).
+ * 1. `runPath`: trasu běhu Julinky po palubovce (zastaví se na hranici AIMING_ZONE_Y).
  * 2. `shotTarget`: přesný cíl v brance s magnetickým zámkem do 5 kapes (s posunem 55 px nad prst).
  * 3. `releasePoint`: bod, odkud Julinka po doběhu vystřelí.
+ * 4. `isDirectAim`: true pokud hráč přímo míří na branku bez náběhu.
  */
 export function partitionStroke(
   points: { x: number; y: number }[],
   goal: GoalDimensions,
-  previousTarget?: ShotTarget | null
+  previousTarget?: ShotTarget | null,
+  playerPos?: { x: number; y: number }
 ): PartitionedStroke {
-  const MIN_RUN_Y = 285; // Přední hranice brankoviště – kam Julinka doběhne
+  const defaultPlayerPos = playerPos || { x: goal.x, y: 780 };
   const pockets = getGoalTargetPockets(goal);
 
   if (!points || points.length === 0) {
@@ -235,20 +238,26 @@ export function partitionStroke(
       x: goal.x,
       y: goal.y - 70,
       z: 70,
-      label: 'PŘÍMÁ STŘELA! 🎯',
+      label: '🎯 PŘÍMÁ STŘELA!',
       badgeColor: '#00ffcc',
     };
     return {
-      runPath: [{ x: goal.x, y: 780 }],
+      runPath: [],
       shotTarget: defaultTarget,
-      releasePoint: { x: goal.x, y: 780 },
+      releasePoint: defaultPlayerPos,
+      isDirectAim: true,
     };
   }
 
-  // 1. Rozdělení trasy běhu (zastaví se před brankovištěm na MIN_RUN_Y)
+  const firstPoint = points[0];
+  const lastPoint = points[points.length - 1];
+
+  // 1. Zjištění, zda jde o přímé míření na branku (Direct Aiming):
+  // a) Tah začal přímo v zóně branky (Y <= AIMING_ZONE_Y)
+  // b) Nebo celá délka tahu na palubovce je menší než 35 px (pouhý ťuk / drag bez úmyslu kličkovat)
   let transitionIdx = -1;
   for (let i = 0; i < points.length; i++) {
-    if (points[i].y < MIN_RUN_Y) {
+    if (points[i].y <= AIMING_ZONE_Y) {
       transitionIdx = i;
       break;
     }
@@ -256,34 +265,66 @@ export function partitionStroke(
 
   let runPath: { x: number; y: number }[] = [];
   let releasePoint: { x: number; y: number };
+  let isDirectAim = false;
 
-  if (transitionIdx > 0) {
-    // Část bodů je na hřišti a konec tahu míří do branky
-    runPath = points.slice(0, transitionIdx);
+  if (firstPoint.y <= AIMING_ZONE_Y) {
+    // Tah začal přímo v zóně branky -> čisté přímé míření bez běhu
+    isDirectAim = true;
+    runPath = [];
+    releasePoint = defaultPlayerPos;
+  } else if (transitionIdx > 0) {
+    // Tah začal na hřišti a vjel do zóny branky
+    const rawFloorPoints = points.slice(0, transitionIdx);
     const pBefore = points[transitionIdx - 1];
     const pAfter = points[transitionIdx];
-    const ratio = (MIN_RUN_Y - pBefore.y) / (pAfter.y - pBefore.y);
+    const ratio = (AIMING_ZONE_Y - pBefore.y) / (pAfter.y - pBefore.y);
     const clampedRatio = Math.max(0, Math.min(1, ratio));
-    releasePoint = {
+    const intercept = {
       x: pBefore.x + (pAfter.x - pBefore.x) * clampedRatio,
-      y: MIN_RUN_Y,
+      y: AIMING_ZONE_Y,
     };
-    runPath.push(releasePoint);
+
+    const candidatePath = [...rawFloorPoints, intercept];
+    let floorDist = 0;
+    for (let i = 1; i < candidatePath.length; i++) {
+      floorDist += Math.hypot(candidatePath[i].x - candidatePath[i - 1].x, candidatePath[i].y - candidatePath[i - 1].y);
+    }
+
+    if (floorDist > 35) {
+      runPath = candidatePath;
+      releasePoint = intercept;
+      isDirectAim = false;
+    } else {
+      runPath = [];
+      releasePoint = defaultPlayerPos;
+      isDirectAim = true;
+    }
   } else if (transitionIdx === 0) {
-    // Tah začal rovnou v zóně branky
-    releasePoint = { x: points[0].x, y: MIN_RUN_Y };
-    runPath = [{ x: points[0].x, y: MIN_RUN_Y }];
+    isDirectAim = true;
+    runPath = [];
+    releasePoint = defaultPlayerPos;
   } else {
-    // Všechny body jsou na palubovce
-    runPath = [...points];
-    releasePoint = points[points.length - 1];
+    // Všechny body jsou na palubovce (tah ještě nedosáhl zóny branky)
+    let floorDist = 0;
+    for (let i = 1; i < points.length; i++) {
+      floorDist += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
+    }
+
+    if (floorDist > 35) {
+      runPath = [...points];
+      releasePoint = points[points.length - 1];
+      isDirectAim = false;
+    } else {
+      runPath = [];
+      releasePoint = defaultPlayerPos;
+      isDirectAim = true;
+    }
   }
 
   // 2. Výpočet virtuálního zaměřovacího bodu (aimPos) s offsetem 55 px nad prst
-  const lastPoint = points[points.length - 1];
   let aimPos: { x: number; y: number };
 
-  if (lastPoint.y < MIN_RUN_Y + 70) {
+  if (lastPoint.y <= AIMING_ZONE_Y + 70) {
     // Prst je v horní části u branky -> virtuální mířidlo je 55 px nad prstem
     // Omezíme mířidlo, aby nepřestřelilo nad břevno ani pod brankovou čáru
     const minSightY = goal.y - goal.height * 0.92;
@@ -376,6 +417,7 @@ export function partitionStroke(
       badgeColor,
     },
     releasePoint,
+    isDirectAim,
   };
 }
 
