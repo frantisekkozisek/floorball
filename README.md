@@ -89,10 +89,33 @@ Tlačítkem **🧤 Junior / Profi / Legenda** můžete kdykoliv zvolit obtížno
 
 ---
 
+## 🎨 Vizuální grafika postaviček (2.5D Vector Styling)
+
+Hra disponuje kompletním procedurálním grafickým enginem s vysokou mírou detailů:
+1. **👧 Postava Julinky:**
+   - **Vlající culík s fyzikou pohybu:** Culík energicky kmitá v rytmu běhu (`runTimer`) a při zatočení se realisticky vyklání do odstředivého směru vlivem náklonu těla (`playerFacingAngle`).
+   - **Vrstvený účes & čelenka:** Propracované vlasy se světelným leskem na temeni a pružnou sportovní čelenkou ladící s barvou zvoleného dresu.
+   - **Anatomický dres s 3D stínováním:** Projmutý sportovní střih, V-neck límeček, bílé boční prodyšné vsadky a čistě vysázené jméno s číslem s jemným prostorovým stínem.
+   - **Profi florbalová výbava:** Kónický karbonový shaft, spirálově vinutá bílá florbalová omotávka s texturou, zářivě neonově růžová čepel s podélnými žebry/otvory a klenutou špičkou pro vedení míčku.
+   - **Nohy a sálovky:** Kraťasy s reflexním proužkem, odhalená kůže, bílé ponožky s proužkem a florbalové sálovky s karamelovou neznačkující podrážkou (gum sole) a bílými tkaničkami.
+   - **Dvojitý podlahový stín:** Vnitřní kontaktní stín pod nohama a měkký ambientní stín celého těla.
+
+2. **🧤 Postava Brankáře:**
+   - **Florbalová helma s cat-eye mřížkou:** Aerodynamická skořepina masky s leskem, chromová mřížka s kovovými odlesky a soustředěné oči brankáře hlídající míček.
+   - **Unikátní polepy masky dle úrovně:**
+     - 🟢 **Junior:** Dva bílé závodní pruhy.
+     - 🟡 **Profi:** Tyrkysové blesky na bocích masky.
+     - 🔴 **Legenda:** Zlatá královská koruna.
+   - **Mohutná silueta & polstrovaná vesta:** Široká ramena s chrániči, 3D stínovaný dres, boční panely a velké číslo 1 s drop shadow.
+   - **Florbalové rukavice s prsty:** Profesionální rukavice se silikonovými gripy na dlani, oranžovými sticky polštářky na prstech a páskem na zápěstí; při zákroku do strany se prsty dynamicky rozevírají pro maximální pokrytí.
+   - **Brankářské kalhoty a 3D slidery:** Široké polstrované tepláky v kleku, žluté plastické slidery na kolenou s odleskem, které se naklánějí při skoku do strany, a špičky/paty bot vykukující vzadu.
+
+---
+
 ## 🚀 Technologie & Výkon
 
 - **2.5D Canvas Engine:** Bleskový start bez zpoždění, stabilní 60 FPS na každém telefonu.
-- **Čistá velikost (Bundle):** Pouze ~8 kB gzipped bez zbytečných těžkých knihoven.
+- **Čistá velikost (Bundle):** Pouze ~17.8 kB gzipped bez zbytečných těžkých knihoven a rastrových obrázků.
 - **Web Audio API syntetizér:** 100% offline procedurální zvuky (klepnutí florbalky o děravý míček, náraz do sítě, mohutná halová siréna s low-pass rezonancí, vítězné zvonky, píšťalka, cinknutí tyčky, bouřlivý jásot diváků) – žádné stahování externích MP3.
 - **Dotyková podpora:** Zákaz nechtěného zoomování na iOS/Androidu (`touch-action: none`, `viewport-fit=cover`).
 

@@ -1168,211 +1168,752 @@ export class GameEngine {
   }
 
   /**
-   * Vykreslení florbalového brankáře
+   * Vykreslení moderního florbalového brankáře s 2.5D hloubkou, polstrováním a maskou
    */
   private drawGoalkeeper(ctx: CanvasRenderingContext2D) {
     const gl = this.goalieAI.goalie;
+    const config = this.goalieAI.config;
     ctx.save();
     ctx.translate(gl.x, gl.y);
 
     const isDivingLeft = gl.state === 'save_left';
     const isDivingRight = gl.state === 'save_right';
-    const bodyTilt = isDivingLeft ? -0.16 : (isDivingRight ? 0.16 : 0);
+    const bodyTilt = isDivingLeft ? -0.18 : (isDivingRight ? 0.18 : 0);
 
     ctx.rotate(bodyTilt);
 
-    // Stín brankáře (rozšiřuje se při skoku)
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+    // 1. DVOJITÝ STÍN NA PALUBOVCE (vnější ambientní + vnitřní kontaktní)
+    const shadowStretch = Math.abs(bodyTilt) * 24;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.18)';
     ctx.beginPath();
-    ctx.ellipse(0, 0, (gl.width * 0.6) + (Math.abs(bodyTilt) * 20), 14, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 4, (gl.width * 0.7) + shadowStretch, 16, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Chrániče kolen a florbalové betony v kleče
-    ctx.fillStyle = '#0f172a';
-    const leftPadOffset = isDivingLeft ? -16 : 0;
-    const rightPadOffset = isDivingRight ? 16 : 0;
-    ctx.fillRect(-34 + leftPadOffset, -20, 28, 20);
-    ctx.fillRect(6 + rightPadOffset, -20, 28, 20);
-
-    // Žluté slidery na kolenou (typické pro florbal)
-    ctx.fillStyle = '#ffe600';
-    ctx.fillRect(-30 + leftPadOffset, -6, 20, 5);
-    ctx.fillRect(10 + rightPadOffset, -6, 20, 5);
-
-    // Brankářský dres (dle zvolené obtížnosti)
-    ctx.fillStyle = this.goalieAI.config.jerseyColor;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
     ctx.beginPath();
-    ctx.roundRect(-26, -55, 52, 42, [8, 8, 4, 4]);
+    ctx.ellipse(0, 2, (gl.width * 0.45) + shadowStretch * 0.6, 9, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Číslo 1 na dresu brankáře
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 16px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('1', 0, -26);
-
-    // Ruce brankáře s florbalovými rukavicemi
-    const armReachLeft = isDivingLeft ? -22 : 0;
-    const armReachRight = isDivingRight ? 22 : 0;
-    const armTilt = isDivingLeft ? -20 : (isDivingRight ? 20 : 0);
-
-    // Levá ruka a bílá florbalová rukavice
-    ctx.fillStyle = '#0f172a';
-    ctx.fillRect(-38 + armReachLeft, -48 + armTilt, 12, 28);
-    ctx.fillStyle = '#ffffff'; // rukavice
+    // 2. BRANKÁŘSKÉ BOTY (paty a špičky vykukující za kalhotami)
+    const leftPadOffset = isDivingLeft ? -18 : 0;
+    const rightPadOffset = isDivingRight ? 18 : 0;
+    ctx.fillStyle = '#090d16';
+    // Levá pata
     ctx.beginPath();
-    ctx.arc(-32 + armReachLeft, -20 + armTilt, 9, 0, Math.PI * 2);
+    ctx.roundRect(-28 + leftPadOffset, -8, 14, 10, 3);
+    ctx.fill();
+    // Pravá pata
+    ctx.beginPath();
+    ctx.roundRect(14 + rightPadOffset, -8, 14, 10, 3);
     ctx.fill();
 
-    // Pravá ruka a bílá florbalová rukavice
-    ctx.fillStyle = '#0f172a';
-    ctx.fillRect(26 + armReachRight, -48 - armTilt, 12, 28);
-    ctx.fillStyle = '#ffffff';
+    // 3. MOHUTNÉ POLSTROVANÉ KALHOTY V KLEČE
+    const pantsGrad = ctx.createLinearGradient(0, -25, 0, 2);
+    pantsGrad.addColorStop(0, '#1e293b');
+    pantsGrad.addColorStop(1, '#0b1120');
+
+    ctx.fillStyle = pantsGrad;
+    // Levá nohavice / stehno a koleno
     ctx.beginPath();
-    ctx.arc(32 + armReachRight, -20 - armTilt, 9, 0, Math.PI * 2);
+    ctx.roundRect(-36 + leftPadOffset, -24, 30, 24, [8, 8, 4, 4]);
+    ctx.fill();
+    // Pravá nohavice / stehno a koleno
+    ctx.beginPath();
+    ctx.roundRect(6 + rightPadOffset, -24, 30, 24, [8, 8, 4, 4]);
     ctx.fill();
 
-    // Brankářská maska s mřížkou (barva dle obtížnosti)
-    ctx.fillStyle = this.goalieAI.config.maskColor;
+    // Zesílené švy a stíny mezi nohavicemi
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.4)';
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(0, -68, 16, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Černá mřížka masky
-    ctx.strokeStyle = '#0f172a';
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(-10, -72, 20, 12);
-    ctx.beginPath();
-    ctx.moveTo(-10, -66);
-    ctx.lineTo(10, -66);
-    ctx.moveTo(0, -72);
-    ctx.lineTo(0, -60);
+    ctx.moveTo(-6 + leftPadOffset, -18);
+    ctx.lineTo(-6 + leftPadOffset, 0);
+    ctx.moveTo(6 + rightPadOffset, -18);
+    ctx.lineTo(6 + rightPadOffset, 0);
     ctx.stroke();
 
-    // Zobrazení štítku obtížnosti brankáře nad hlavou
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.8)';
+    // 4. PLASTICKÉ ŽLUTÉ SLIDERY NA KOLENOU (typické florbalové kluzné plochy)
+    // Levý slider
+    ctx.save();
+    ctx.translate(-22 + leftPadOffset, -6);
+    ctx.rotate(isDivingLeft ? -0.1 : 0);
+    const sliderGrad1 = ctx.createLinearGradient(0, -6, 0, 4);
+    sliderGrad1.addColorStop(0, '#fef08a');
+    sliderGrad1.addColorStop(0.3, '#facc15');
+    sliderGrad1.addColorStop(1, '#ca8a04');
+    ctx.fillStyle = sliderGrad1;
     ctx.beginPath();
-    ctx.roundRect(-46, -104, 92, 20, 10);
+    ctx.roundRect(-12, -5, 24, 8, 4);
     ctx.fill();
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+    // Odlesk slideru
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+    ctx.fillRect(-8, -4, 16, 2);
+    ctx.restore();
+
+    // Pravý slider
+    ctx.save();
+    ctx.translate(22 + rightPadOffset, -6);
+    ctx.rotate(isDivingRight ? 0.1 : 0);
+    const sliderGrad2 = ctx.createLinearGradient(0, -6, 0, 4);
+    sliderGrad2.addColorStop(0, '#fef08a');
+    sliderGrad2.addColorStop(0.3, '#facc15');
+    sliderGrad2.addColorStop(1, '#ca8a04');
+    ctx.fillStyle = sliderGrad2;
+    ctx.beginPath();
+    ctx.roundRect(-12, -5, 24, 8, 4);
+    ctx.fill();
+    // Odlesk slideru
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+    ctx.fillRect(-8, -4, 16, 2);
+    ctx.restore();
+
+    // 5. MOHUTNÉ TĚLO, POLSTROVANÁ VESTA A DRES
+    // Polstrování ramen (široká silueta florbalového gólmana)
+    ctx.fillStyle = '#0f172a';
+    ctx.beginPath();
+    ctx.roundRect(-36, -58, 72, 20, 10);
+    ctx.fill();
+
+    // Hlavní tělo dresu s 3D gradientem
+    const jerseyGrad = ctx.createLinearGradient(-30, -56, 30, -14);
+    jerseyGrad.addColorStop(0, config.jerseyColor);
+    jerseyGrad.addColorStop(0.6, config.jerseyColor);
+    jerseyGrad.addColorStop(1, '#0f172a');
+
+    ctx.fillStyle = jerseyGrad;
+    ctx.beginPath();
+    ctx.moveTo(-30, -56);
+    ctx.lineTo(30, -56);
+    ctx.quadraticCurveTo(32, -34, 25, -16);
+    ctx.lineTo(-25, -16);
+    ctx.quadraticCurveTo(-32, -34, -30, -56);
+    ctx.closePath();
+    ctx.fill();
+
+    // Boční kontrastní sportovní panely vesty
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.6)';
+    ctx.beginPath();
+    ctx.moveTo(-30, -56);
+    ctx.lineTo(-24, -56);
+    ctx.lineTo(-20, -16);
+    ctx.lineTo(-25, -16);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(30, -56);
+    ctx.lineTo(24, -56);
+    ctx.lineTo(20, -16);
+    ctx.lineTo(25, -16);
+    ctx.closePath();
+    ctx.fill();
+
+    // Sportovní V-neck límec / chránič klíčních kostí
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(-12, -56);
+    ctx.lineTo(0, -46);
+    ctx.lineTo(12, -56);
+    ctx.stroke();
+
+    // Číslo 1 na dresu brankáře s drop shadow
+    ctx.save();
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
+    ctx.shadowBlur = 4;
+    ctx.shadowOffsetY = 2;
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '900 20px "Segoe UI", Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('1', 0, -32);
+    ctx.restore();
+
+    // 6. ANATOMICKÉ PAŽE A FLORBALOVÉ CHYTACÍ RUKAVICE S PRSTY
+    const armReachLeftX = isDivingLeft ? -26 : 0;
+    const armReachLeftY = isDivingLeft ? -22 : 0;
+    const armReachRightX = isDivingRight ? 26 : 0;
+    const armReachRightY = isDivingRight ? -22 : 0;
+
+    // Levá ruka a rukavice
+    this.drawGoalieArmAndGlove(ctx, {
+      side: 'left',
+      shoulderX: -28,
+      shoulderY: -50,
+      handX: -36 + armReachLeftX,
+      handY: -22 + armReachLeftY,
+      isDivingSide: isDivingLeft,
+      jerseyColor: config.jerseyColor,
+    });
+
+    // Pravá ruka a rukavice
+    this.drawGoalieArmAndGlove(ctx, {
+      side: 'right',
+      shoulderX: 28,
+      shoulderY: -50,
+      handX: 36 + armReachRightX,
+      handY: -22 + armReachRightY,
+      isDivingSide: isDivingRight,
+      jerseyColor: config.jerseyColor,
+    });
+
+    // 7. FLORBALOVÁ MASKA (HELMA) S OČIMA A MŘÍŽKOU
+    ctx.save();
+    ctx.translate(0, -68);
+
+    // Tvar helmy (aerodynamický profil masky s chráničem brady)
+    const maskGrad = ctx.createRadialGradient(-5, -6, 4, 0, 0, 20);
+    maskGrad.addColorStop(0, '#ffffff');
+    maskGrad.addColorStop(0.3, config.maskColor);
+    maskGrad.addColorStop(1, '#090d16');
+
+    ctx.fillStyle = maskGrad;
+    ctx.beginPath();
+    ctx.moveTo(-16, -10);
+    ctx.quadraticCurveTo(-18, 4, -10, 14);
+    ctx.lineTo(0, 16);
+    ctx.lineTo(10, 14);
+    ctx.quadraticCurveTo(18, 4, 16, -10);
+    ctx.quadraticCurveTo(14, -20, 0, -20);
+    ctx.quadraticCurveTo(-14, -20, -16, -10);
+    ctx.closePath();
+    ctx.fill();
+
+    // Unikátní polep / grafika masky podle obtížnosti
+    if (config.id === 'junior') {
+      // Junior: dva bílé sportovní závodní pruhy přes temeno
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(-6, -19, 3, 10);
+      ctx.fillRect(3, -19, 3, 10);
+    } else if (config.id === 'profi') {
+      // Profi: neonový blesk po stranách
+      ctx.fillStyle = '#38bdf8';
+      ctx.beginPath();
+      ctx.moveTo(-15, -12); ctx.lineTo(-9, -6); ctx.lineTo(-12, -4); ctx.lineTo(-8, 2);
+      ctx.lineTo(-13, -2); ctx.closePath(); ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(15, -12); ctx.lineTo(9, -6); ctx.lineTo(12, -4); ctx.lineTo(8, 2);
+      ctx.lineTo(13, -2); ctx.closePath(); ctx.fill();
+    } else {
+      // Legenda: zlatá královská koruna a ohnivé runy
+      ctx.fillStyle = '#fbbf24';
+      ctx.beginPath();
+      ctx.moveTo(-8, -19);
+      ctx.lineTo(-4, -14);
+      ctx.lineTo(0, -19);
+      ctx.lineTo(4, -14);
+      ctx.lineTo(8, -19);
+      ctx.lineTo(6, -12);
+      ctx.lineTo(-6, -12);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // OBLIČEJ A OČI ZA MŘÍŽKOU
+    ctx.fillStyle = '#0f172a';
+    ctx.beginPath();
+    ctx.roundRect(-10, -6, 20, 14, 5);
+    ctx.fill();
+
+    // Soustředěné oči brankáře
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.ellipse(-5, -1, 3.5, 2.2, 0, 0, Math.PI * 2);
+    ctx.ellipse(5, -1, 3.5, 2.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Zorničky soustředěné na míček (dole)
+    ctx.fillStyle = '#0284c7';
+    ctx.beginPath();
+    ctx.arc(-5, 0, 1.8, 0, Math.PI * 2);
+    ctx.arc(5, 0, 1.8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#000000';
+    ctx.beginPath();
+    ctx.arc(-5, 0, 0.9, 0, Math.PI * 2);
+    ctx.arc(5, 0, 0.9, 0, Math.PI * 2);
+    ctx.fill();
+    // Obočí (odhodlaný výraz)
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(-8, -4); ctx.lineTo(-2, -3);
+    ctx.moveTo(8, -4); ctx.lineTo(2, -3);
+    ctx.stroke();
+
+    // CHROMOVÁ CAT-EYE MŘÍŽKA HELMY
+    ctx.strokeStyle = '#e2e8f0';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.roundRect(-11, -8, 22, 18, 4);
+    ctx.stroke();
+
+    ctx.strokeStyle = '#94a3b8';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(-11, 0); ctx.lineTo(11, 0);
+    ctx.moveTo(-11, 5); ctx.lineTo(11, 5);
+    ctx.moveTo(0, -8); ctx.lineTo(0, 10);
+    ctx.moveTo(-6, -8); ctx.lineTo(-6, 10);
+    ctx.moveTo(6, -8); ctx.lineTo(6, 10);
+    ctx.stroke();
+
+    // Středový lesk na mřížce
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
     ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(-10, -7); ctx.lineTo(-3, -7);
     ctx.stroke();
 
+    ctx.restore();
+
+    // 8. ODZNAK OBTÍŽNOSTI NAD HLAVOU
+    ctx.save();
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.35)';
+    ctx.shadowBlur = 6;
+    ctx.shadowOffsetY = 2;
+
+    const badgeBg = ctx.createLinearGradient(-50, -106, 50, -86);
+    badgeBg.addColorStop(0, 'rgba(15, 23, 42, 0.92)');
+    badgeBg.addColorStop(1, 'rgba(30, 41, 59, 0.92)');
+    ctx.fillStyle = badgeBg;
+    ctx.beginPath();
+    ctx.roundRect(-50, -106, 100, 22, 11);
+    ctx.fill();
+
+    ctx.strokeStyle = config.id === 'legend' ? '#fbbf24' : (config.id === 'profi' ? '#38bdf8' : '#4ade80');
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+    ctx.restore();
+
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 11px sans-serif';
+    ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(this.goalieAI.config.badge, 0, -90);
+    ctx.textBaseline = 'middle';
+    ctx.fillText(config.badge, 0, -95);
 
     ctx.restore();
   }
 
   /**
-   * Vykreslení postavičky Julinky s hokejkou
+   * Vykreslení paže a florbalové chytací rukavice brankáře
+   */
+  private drawGoalieArmAndGlove(
+    ctx: CanvasRenderingContext2D,
+    opts: {
+      side: 'left' | 'right';
+      shoulderX: number;
+      shoulderY: number;
+      handX: number;
+      handY: number;
+      isDivingSide: boolean;
+      jerseyColor: string;
+    }
+  ) {
+    const { side, shoulderX, shoulderY, handX, handY, isDivingSide, jerseyColor } = opts;
+    const isLeft = side === 'left';
+
+    // Rukáv dresu (od ramene k lokti)
+    ctx.strokeStyle = jerseyColor;
+    ctx.lineWidth = 10;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(shoulderX, shoulderY);
+    const elbowX = (shoulderX + handX) * 0.5 + (isLeft ? -4 : 4);
+    const elbowY = (shoulderY + handY) * 0.5;
+    ctx.quadraticCurveTo(elbowX, elbowY, handX, handY);
+    ctx.stroke();
+
+    // Kompresní spodní rukáv na předloktí
+    ctx.strokeStyle = '#0f172a';
+    ctx.lineWidth = 8;
+    ctx.beginPath();
+    ctx.moveTo(elbowX, elbowY);
+    ctx.lineTo(handX, handY);
+    ctx.stroke();
+
+    // FLORBALOVÁ RUKAVICE (Dlaň a prsty)
+    ctx.save();
+    ctx.translate(handX, handY);
+
+    const handAngle = Math.atan2(handY - elbowY, handX - elbowX) + (isLeft ? -Math.PI / 2 : Math.PI / 2);
+    ctx.rotate(handAngle * 0.3);
+
+    // Zápěstní manžeta s páskem
+    ctx.fillStyle = '#1e293b';
+    ctx.beginPath();
+    ctx.roundRect(-6, -4, 12, 6, 2);
+    ctx.fill();
+    ctx.fillStyle = '#38bdf8';
+    ctx.fillRect(-5, -2, 10, 2);
+
+    // Dlaň rukavice (bílo-černý profesionální florbalový design)
+    ctx.fillStyle = '#f8fafc';
+    ctx.beginPath();
+    ctx.roundRect(-7, 2, 14, 11, 4);
+    ctx.fill();
+
+    // Silikonové gripy na dlani
+    ctx.fillStyle = '#0f172a';
+    ctx.beginPath();
+    ctx.arc(0, 7, 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Prsty (rozevřené při zákroku pro maximální pokrytí)
+    const fingerSpread = isDivingSide ? 1.4 : 1.0;
+    ctx.fillStyle = '#f8fafc';
+    const fingerPositions = [-5, -2, 2, 5];
+    fingerPositions.forEach((fx, idx) => {
+      const flen = (idx === 1 || idx === 2) ? 8 : 6;
+      const spreadX = fx * fingerSpread;
+      ctx.beginPath();
+      ctx.roundRect(spreadX - 1.5, 12, 3, flen, 1.5);
+      ctx.fill();
+
+      // Silikonový přilnavý terčík na špičce prstu
+      ctx.fillStyle = '#f97316';
+      ctx.fillRect(spreadX - 1.2, 12 + flen - 2.5, 2.4, 2);
+      ctx.fillStyle = '#f8fafc';
+    });
+
+    // Palec
+    ctx.fillStyle = '#f8fafc';
+    const thumbX = isLeft ? 6 : -6;
+    ctx.beginPath();
+    ctx.roundRect(thumbX - (isLeft ? 0 : 3), 4, 3.5, 6, 1.5);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  /**
+   * Vykreslení nohy hráčky s kraťasy, kůží, ponožkou a sálovou botou
+   */
+  private drawPlayerLegAndShoe(
+    ctx: CanvasRenderingContext2D,
+    opts: {
+      x: number;
+      baseY: number;
+      offsetY: number;
+      jerseyColor: string;
+    }
+  ) {
+    const { x, baseY, offsetY, jerseyColor } = opts;
+    const currentY = baseY + offsetY;
+
+    // Šortky (nohavice)
+    ctx.fillStyle = '#0f172a';
+    ctx.beginPath();
+    ctx.roundRect(x - 6, currentY - 2, 12, 14, [0, 0, 3, 3]);
+    ctx.fill();
+
+    // Odhalená noha (stehno/koleno)
+    ctx.fillStyle = '#fed7aa';
+    ctx.fillRect(x - 4, currentY + 10, 8, 8);
+
+    // Bílá sportovní ponožka s proužkem v barvě dresu
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillRect(x - 4.5, currentY + 16, 9, 8);
+    // Proužek ponožky
+    ctx.fillStyle = jerseyColor;
+    ctx.fillRect(x - 4.5, currentY + 17, 9, 2);
+
+    // SÁLOVÁ FLORBALOVÁ BOTA
+    const shoeY = currentY + 22;
+    // Tělo boty (neonově žlutá s černým detailem)
+    ctx.fillStyle = '#facc15';
+    ctx.beginPath();
+    ctx.roundRect(x - 7, shoeY, 14, 7, [3, 5, 2, 2]);
+    ctx.fill();
+
+    // Karamelová gumová podrážka (gum sole)
+    ctx.fillStyle = '#d97706';
+    ctx.beginPath();
+    ctx.roundRect(x - 7, shoeY + 6, 14, 3, [0, 0, 2, 2]);
+    ctx.fill();
+
+    // Šněrování / tkaničky boty
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(x - 3, shoeY + 1, 6, 1.5);
+    ctx.fillRect(x - 3, shoeY + 3.5, 6, 1.5);
+  }
+
+  /**
+   * Vykreslení postavičky Julinky s hokejkou, dynamickým culíkem a atletickými detaily
    */
   private drawPlayer(ctx: CanvasRenderingContext2D) {
     ctx.save();
     ctx.translate(this.playerX, this.playerY);
 
     if (this.isRunningPath && Math.abs(this.playerFacingAngle) > 0.05) {
-      ctx.rotate(this.playerFacingAngle * 0.35); // jemné naklonění těla do zatáčky
+      ctx.rotate(this.playerFacingAngle * 0.35);
     }
 
-    // Bobbing těla při běhu (tělo se pohupuje nahoru a dolů)
+    // Bobbing těla při běhu (plynulý atletický běh)
     const bob = this.isRunningPath ? Math.abs(Math.sin(this.runTimer * 20)) * 5 : 0;
     ctx.translate(0, -bob);
 
-    // Stín hráčky
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+    // 1. DVOJITÝ STÍN HRÁČKY NA PALUBOVCE
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.16)';
     ctx.beginPath();
-    ctx.ellipse(0, 45 + bob, 35, 14, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 46 + bob, 34, 13, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Běžící nohy a svítivé florbalové sálovky
-    const legOffset = this.isRunningPath ? Math.sin(this.runTimer * 20) * 14 : 0;
-    ctx.fillStyle = '#0f172a'; // šortky
-    ctx.fillRect(-18, 20 + legOffset, 12, 16);
-    ctx.fillRect(6, 20 - legOffset, 12, 16);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+    ctx.beginPath();
+    ctx.ellipse(0, 44 + bob, 22, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
 
-    ctx.fillStyle = '#ffe600'; // neonově žluté sálovky
-    ctx.fillRect(-20, 35 + legOffset, 15, 8);
-    ctx.fillRect(4, 35 - legOffset, 15, 8);
+    // 2. ATLETICKÉ NOHY, ŠORTKY, PONOŽKY A SÁLOVÉ BOTY
+    const legCycle = this.runTimer * 20;
+    const legOffset1 = this.isRunningPath ? Math.sin(legCycle) * 14 : 0;
+    const legOffset2 = this.isRunningPath ? -Math.sin(legCycle) * 14 : 0;
 
-    // Florbalová hokejka (shaft a čepel)
+    // Levá noha
+    this.drawPlayerLegAndShoe(ctx, {
+      x: -12,
+      baseY: 20,
+      offsetY: legOffset1,
+      jerseyColor: this.playerConfig.jerseyColor,
+    });
+
+    // Pravá noha
+    this.drawPlayerLegAndShoe(ctx, {
+      x: 12,
+      baseY: 20,
+      offsetY: legOffset2,
+      jerseyColor: this.playerConfig.jerseyColor,
+    });
+
+    // 3. SPORTOVNÍ ŠORTKY (pas a spojnice)
+    ctx.fillStyle = '#0f172a';
+    ctx.beginPath();
+    ctx.roundRect(-18, 16, 36, 12, [2, 2, 4, 4]);
+    ctx.fill();
+    // Bílý postranní reflexní pruh šortek
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillRect(-18, 17, 2, 10);
+    ctx.fillRect(16, 17, 2, 10);
+
+    // 4. PROFESIONÁLNÍ FLORBALKA (Shaft, spirálový grip a děrovaná čepel)
     ctx.save();
-    ctx.translate(15, 30);
+    ctx.translate(15, 28);
     ctx.rotate(this.stickAngle);
 
-    // Shaft hole (karbonově černý s bílou omotávkou)
-    ctx.strokeStyle = '#0f172a';
-    ctx.lineWidth = 6;
-    ctx.beginPath();
-    ctx.moveTo(-10, -65);
-    ctx.lineTo(10, 15);
-    ctx.stroke();
+    // Karbonový shaft
+    const shaftGrad = ctx.createLinearGradient(-10, -65, 10, 15);
+    shaftGrad.addColorStop(0, '#334155');
+    shaftGrad.addColorStop(0.5, '#0f172a');
+    shaftGrad.addColorStop(1, '#1e293b');
 
-    // Omotávka
-    ctx.strokeStyle = '#f8fafc';
-    ctx.lineWidth = 6;
-    ctx.beginPath();
-    ctx.moveTo(-10, -65);
-    ctx.lineTo(-2, -35);
-    ctx.stroke();
-
-    // Florbalová čepel (zářivě růžová neonová čepel!)
-    ctx.strokeStyle = '#ff007f';
-    ctx.lineWidth = 8;
+    ctx.strokeStyle = shaftGrad;
+    ctx.lineWidth = 5.5;
     ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.moveTo(10, 15);
-    ctx.quadraticCurveTo(28, 16, 38, 22);
+    ctx.moveTo(-10, -68);
+    ctx.lineTo(10, 16);
     ctx.stroke();
+
+    // Spirálově vinutá bílá florbalová omotávka (grip)
+    ctx.strokeStyle = '#f8fafc';
+    ctx.lineWidth = 5.5;
+    ctx.beginPath();
+    ctx.moveTo(-10, -68);
+    ctx.lineTo(-2, -32);
+    ctx.stroke();
+
+    // Spirálové proužky / překlady gripu
+    ctx.strokeStyle = 'rgba(15, 23, 42, 0.35)';
+    ctx.lineWidth = 1.2;
+    for (let gy = -64; gy <= -34; gy += 6) {
+      const gx = -10 + (gy - (-68)) * (8 / 36);
+      ctx.beginPath();
+      ctx.moveTo(gx - 3, gy);
+      ctx.lineTo(gx + 3, gy + 3);
+      ctx.stroke();
+    }
+
+    // Zářivě neonově růžová čepel s prolisy / žebrováním
+    ctx.strokeStyle = '#ec4899';
+    ctx.lineWidth = 7;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(10, 16);
+    ctx.quadraticCurveTo(28, 17, 38, 23);
+    ctx.stroke();
+
+    // Zpevňující žebrování / mřížka čepele
+    ctx.strokeStyle = '#be185d';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(15, 17); ctx.lineTo(16, 21);
+    ctx.moveTo(22, 17); ctx.lineTo(23, 22);
+    ctx.moveTo(29, 18); ctx.lineTo(30, 23);
+    ctx.stroke();
+
+    // Klenutá špička čepele
+    ctx.strokeStyle = '#f472b6';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(37, 22, 2.5, 0, Math.PI * 2);
+    ctx.stroke();
+
     ctx.restore();
 
-    // Tělo hráčky (dres Julinky s nastavitelným číslem a barvou)
-    ctx.fillStyle = this.playerConfig.jerseyColor;
+    // 5. ANATOMICKY TVAROVANÝ DRES JULINKY
+    const playerJerseyGrad = ctx.createLinearGradient(-26, -26, 26, 22);
+    playerJerseyGrad.addColorStop(0, this.playerConfig.jerseyColor);
+    playerJerseyGrad.addColorStop(0.7, this.playerConfig.jerseyColor);
+    playerJerseyGrad.addColorStop(1, '#0f172a');
+
+    ctx.fillStyle = playerJerseyGrad;
     ctx.beginPath();
-    ctx.roundRect(-28, -25, 56, 50, [12, 12, 6, 6]);
+    ctx.moveTo(-24, -24);
+    ctx.quadraticCurveTo(0, -26, 24, -24);
+    ctx.quadraticCurveTo(26, -2, 22, 18);
+    ctx.lineTo(-22, 18);
+    ctx.quadraticCurveTo(-26, -2, -24, -24);
+    ctx.closePath();
     ctx.fill();
 
-    // Stylový lem dresu
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+    // Boční kontrastní sportovní vsadky
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+    ctx.beginPath();
+    ctx.moveTo(-24, -20);
+    ctx.lineTo(-20, -20);
+    ctx.lineTo(-19, 16);
+    ctx.lineTo(-22, 16);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(24, -20);
+    ctx.lineTo(20, -20);
+    ctx.lineTo(19, 16);
+    ctx.lineTo(22, 16);
+    ctx.closePath();
+    ctx.fill();
+
+    // Sportovní V-neck límeček
+    ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(0, -25, 12, 0, Math.PI);
+    ctx.moveTo(-10, -24);
+    ctx.lineTo(0, -16);
+    ctx.lineTo(10, -24);
     ctx.stroke();
 
-    // Jméno a číslo na zádech
+    // JMÉNO A ČÍSLO NA DRESU S DROP SHADOW
+    ctx.save();
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+    ctx.shadowBlur = 3;
+    ctx.shadowOffsetY = 1.5;
+
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 11px sans-serif';
+    ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(this.playerConfig.name.toUpperCase(), 0, -8);
-    ctx.font = 'bold 22px sans-serif';
-    ctx.fillText(this.playerConfig.number.toString(), 0, 16);
+    ctx.fillText(this.playerConfig.name.toUpperCase(), 0, -6);
 
-    // Hlava a culík
-    ctx.fillStyle = '#fbcfe8'; // kůže
+    ctx.font = '900 23px system-ui, -apple-system, sans-serif';
+    ctx.fillText(this.playerConfig.number.toString(), 0, 14);
+    ctx.restore();
+
+    // 6. PAŽE DRŽÍCÍ FLORBALKU
+    ctx.strokeStyle = '#fed7aa';
+    ctx.lineWidth = 6.5;
+    ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.arc(0, -42, 16, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Vlasy s culíkem a sportovní čelenkou
-    ctx.fillStyle = '#78350f'; // hnědé vlasy
-    ctx.beginPath();
-    ctx.arc(0, -46, 17, Math.PI, Math.PI * 2);
-    ctx.fill();
-
-    // Čelenka ladící s barvou dresu
+    ctx.moveTo(-22, -18);
+    ctx.quadraticCurveTo(-14, -6, 2, 4);
+    ctx.stroke();
+    // Potítko na zápěstí v barvě dresu
     ctx.strokeStyle = this.playerConfig.jerseyColor;
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 7;
     ctx.beginPath();
-    ctx.arc(0, -43, 16, Math.PI * 0.9, Math.PI * 0.1);
+    ctx.moveTo(-2, 0);
+    ctx.lineTo(2, 4);
     ctx.stroke();
 
-    // Culík vlající dozadu
+    // Pravá paže
+    ctx.strokeStyle = '#fed7aa';
+    ctx.lineWidth = 6.5;
+    ctx.beginPath();
+    ctx.moveTo(22, -18);
+    ctx.quadraticCurveTo(18, 0, 12, 14);
+    ctx.stroke();
+
+    // 7. HLAVA, OBLIČEJ A UŠI
+    ctx.fillStyle = '#fed7aa';
+    ctx.beginPath();
+    ctx.ellipse(0, -42, 15, 17, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Uši
+    ctx.fillStyle = '#fdba74';
+    ctx.beginPath();
+    ctx.arc(-15, -42, 3.5, 0, Math.PI * 2);
+    ctx.arc(15, -42, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 8. ÚČES, LESK NA VLASECH A SPORTOVNÍ ČELENKA
+    ctx.fillStyle = '#5c2c16';
+    ctx.beginPath();
+    ctx.arc(0, -45, 16.5, Math.PI * 0.95, Math.PI * 2.05);
+    ctx.fill();
+
     ctx.fillStyle = '#78350f';
     ctx.beginPath();
-    ctx.arc(14, -50, 10, 0, Math.PI * 2);
+    ctx.arc(-5, -46, 14, Math.PI * 1.0, Math.PI * 1.8);
+    ctx.arc(5, -46, 14, Math.PI * 1.2, Math.PI * 2.0);
     ctx.fill();
+
+    // Světelný lesk na temeni
+    ctx.fillStyle = 'rgba(217, 119, 6, 0.45)';
+    ctx.beginPath();
+    ctx.ellipse(0, -53, 9, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Pružná sportovní čelenka ladící s barvou dresu
+    ctx.strokeStyle = this.playerConfig.jerseyColor;
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    ctx.arc(0, -43, 16, Math.PI * 0.88, Math.PI * 0.12);
+    ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(0, -43, 16, Math.PI * 0.88, Math.PI * 0.12);
+    ctx.stroke();
+
+    // 9. DYNAMICKÝ VLAJÍCÍ CULÍK (organický pohyb a odstředivá síla!)
+    const ponySway = this.isRunningPath ? Math.cos(this.runTimer * 20) * 5 : 0;
+    const centrifugalOffset = this.isRunningPath ? -this.playerFacingAngle * 14 : 0;
+    const ponyX = 14 + centrifugalOffset;
+    const ponyY = -48 + ponySway;
+
+    // Gumička do vlasů
+    ctx.fillStyle = this.playerConfig.jerseyColor;
+    ctx.beginPath();
+    ctx.arc(10, -47, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Hlavní tělo culíku
+    ctx.fillStyle = '#78350f';
+    ctx.beginPath();
+    ctx.moveTo(10, -49);
+    ctx.quadraticCurveTo(ponyX + 4, ponyY - 4, ponyX + 16, ponyY + 2);
+    ctx.quadraticCurveTo(ponyX + 10, ponyY + 12, 8, -44);
+    ctx.closePath();
+    ctx.fill();
+
+    // Pramen s odleskem v culíku
+    ctx.strokeStyle = '#9a3412';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(11, -47);
+    ctx.quadraticCurveTo(ponyX + 6, ponyY, ponyX + 13, ponyY + 4);
+    ctx.stroke();
 
     ctx.restore();
   }
